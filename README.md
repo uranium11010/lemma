@@ -10,11 +10,17 @@ In this project, we want to learn mathematical abstractions from formal solution
 This is an initial dataset of [ConPoLe solutions to equations](https://drive.google.com/file/d/1-5SPDOIrxQ7jpC34sVOTbDfKVxRAJPxY/view?usp=sharing) ([larger version](https://drive.google.com/file/d/11M5ceRy7n3pnX2ORwWXE0uNdgLziSVMm/view?usp=sharing))
 that we can use to explore questions 1-3. Question 4 will also require integrating the patterns in the learning algorithm.
 
-A first attempt to find patterns could be something on these lines:
+Possible approaches:
 
+Approach 1:
 1. Represent each solution as a sequence of axioms (initially ignoring parameters)
 2. Count the frequency of each contiguous subsequence of axioms in all solutions.
 3. Rank these subsequences by a combination of (a) their frequency and (b) their length
 4. Save the top pattern into a learned abstraction, creating a rewrite rule (sequence -> new abstract action).
 5. Rewrite solutions using this new abstraction, then repeat K times.
 
+Approach 2: (currently implemented in `compress_naive.py`, although not yet finished)
+1. Represent each solution as a sequence of axioms (initially ignoring parameters).
+2. Count the frequency of contiguous pairs of actions among the dataset of solutions.
+3. Construct directed graph where edges point from a current action to a next action where the frequency is at least some threshold frequency.
+4. Find maximal paths within the graph, although the term "maximal" is not well-defined when the graph has cycles. (So we need some better definition here.)
