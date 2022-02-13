@@ -24,3 +24,11 @@ Approach 2: (currently implemented in `compress_naive.py`, although not yet fini
 2. Count the frequency of contiguous pairs of actions among the dataset of solutions.
 3. Construct directed graph where edges point from a current action to a next action where the frequency is at least some threshold frequency.
 4. Find maximal paths within the graph, although the term "maximal" is not well-defined when the graph has cycles. (So we need some better definition here.)
+
+### Next steps
+
+1. Complete Approach 2 (e.g. remove constraint that starting node must be source node)
+2. Implement Approach 1. Two specific approaches:
+    1. Store all occurring subsequences in solutions in dictionary as keys, which is possible since a subsequence can be represented as a tuple of immutable objects; let values of dictionary = frequencies); takes up a lot of memory--have cut-off length?
+    2. Iteratively find common subsequences of length 2, 3, 4, etc. using cut-off frequency threshold; after length k, only look for length-(k+1) subsequences that have the first k elements being a common subsequence and last k elements being a common subsequence
+3. Move tool functions (e.g. printing, drawing) into separate `tool.py`
