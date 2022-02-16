@@ -96,14 +96,13 @@ def maximal_paths(N, graph):
     """
     Helper for common_subseq(..)
     Finds maximal paths in directed graph given by adjacency matrix 'graph'; N = # nodes
-    ATTENTION: MISSES MANY PATHS WHEN THERE ARE CYCLES
-    B/C OF CONDITION THAT PATH STARTS AT SOURCE NODE
+    ATTENTION: NOT 'MAXIMAL' IN THE REVERSE DIRECTION (SO IF [2, 5, 3, 5] IS DETECTED, [5, 3, 5] ALSO WOULD BE),
+    HENCE THERE ARE MANY REDUNDANCIES
     """
     paths = []
     for node in range(N):
-        if not (np.any(graph[:node,node]) or np.any(graph[(node+1):,node])): # node is a starting point of a maximal path
-            paths.append([node])
-            dfs(N, graph, node, paths, {node}, [len(paths)-1])
+        paths.append([node])
+        dfs(N, graph, node, paths, {node}, [len(paths)-1])
     
     return paths
 
@@ -158,6 +157,6 @@ if __name__ == "__main__":
     # print(paths)
     # print(maximal_paths(6, graph))
 
-    abstractions = common_subseq(solutions, num_ax, axioms, get_ax_name, )
-    print(abstractions) # CURRENTLY NOT VERY USEFUL B/C ALL THE CYCLES ARE MISSING
+    abstractions = common_subseq(solutions, num_ax, axioms, get_ax_name)
+    print(len(abstractions))
 
