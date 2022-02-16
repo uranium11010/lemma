@@ -56,3 +56,6 @@ def draw_graph(N, matrix):
 
     plt.show()
 
+if __name__ == "__main__":
+    solutions = load_solutions("equations-8k.json")
+    print_solution(solutions[0])

@@ -97,7 +97,7 @@ def get_ax_name(ax_full):
 if __name__ == "__main__":
     solutions = util.load_solutions("equations-8k.json")
     num_ax, axioms = util.load_axioms("equation_axioms.json")
-    
+
     # freq = get_frequencies(solutions, num_ax, axioms, get_ax_name)
     # print(freq)
     # common_subseq(solutions, num_ax, axioms, get_ax_name)
@@ -117,5 +117,5 @@ if __name__ == "__main__":
     # print(maximal_paths(6, graph))
 
     abstractions = common_subseq(solutions, num_ax, axioms, get_ax_name)
-    print(len(abstractions))
+    print(abstractions)
 

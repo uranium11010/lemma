@@ -32,3 +32,4 @@ Approach 2: (currently implemented in `compress_naive.py`, although not yet fini
     1. Store all occurring subsequences in solutions in dictionary as keys, which is possible since a subsequence can be represented as a tuple of immutable objects; let values of dictionary = frequencies); takes up a lot of memory--have cut-off length?
     2. Iteratively find common subsequences of length 2, 3, 4, etc. using cut-off frequency threshold; after length k, only look for length-(k+1) subsequences that have the first k elements being a common subsequence and last k elements being a common subsequence
 3. Implement abstraction on the solutions to see if the abstracted solutions look good
+4. Tool function that draws weighted graph of frequencies of action pairs
