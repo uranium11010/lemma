@@ -24,6 +24,7 @@ Approach 2: (currently implemented in `compress_naive.py`, although not yet fini
 2. Count the frequency of contiguous pairs of actions among the dataset of solutions.
 3. Construct directed graph where edges point from a current action to a next action where the frequency is at least some threshold frequency.
 4. Find maximal paths within the graph, although the term "maximal" is not well-defined when the graph has cycles. (So we need some better definition here.)
+Issues: A->B common and B->C common doesn't imply that A->B->C is common; currently, many redundancies in the paths generated (e.g. if A->B->C is an outputed abstraction, B->C would also be an outputed abstraction).
 
 ### Next steps
 
