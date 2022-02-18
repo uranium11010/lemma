@@ -19,7 +19,7 @@ Approach 1:
 4. Save the top pattern into a learned abstraction, creating a rewrite rule (sequence -> new abstract action).
 5. Rewrite solutions using this new abstraction, then repeat K times.
 
-Approach 2: (currently implemented in `compress_naive.py`, although not yet finished)
+Approach 2: (currently implemented in `CommonPairs` class in `compress.py`)
 1. Represent each solution as a sequence of axioms (initially ignoring parameters).
 2. Count the frequency of contiguous pairs of actions among the dataset of solutions.
 3. Construct directed graph where edges point from a current action to a next action where the frequency is at least some threshold frequency.
