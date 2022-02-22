@@ -19,6 +19,13 @@ Approach 1:
 4. Save the top pattern into a learned abstraction, creating a rewrite rule (sequence -> new abstract action).
 5. Rewrite solutions using this new abstraction, then repeat K times.
 
+Approach 1 variant: (currently implemented in `IterAbsPairs` class in `compress.py` (not completed))
+1. Represent each solution as a sequence of axioms (initially ignoring parameters)
+2. Count the frequency of each contiguous length-2 subsequence of axioms in all solutions.
+3. Rank these subsequences by a combination of their frequency
+4. Save the top pattern (or top few, based on threshold) into a learned abstraction, creating a rewrite rule (sequence -> new abstract action).
+5. Rewrite solutions using this new abstraction, then repeat K times.
+
 Approach 2: (currently implemented in `CommonPairs` class in `compress.py`)
 1. Represent each solution as a sequence of axioms (initially ignoring parameters).
 2. Count the frequency of contiguous pairs of actions among the dataset of solutions.
