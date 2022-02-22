@@ -67,6 +67,11 @@ class Compress(object):
 
 
 class CommonPairs(Compress):
+    """
+    Finds common (cur, next) action pairs among solutions and constructs corresponding
+    digraph with these pairs as edges.
+    Uses paths of this digraph as abstractions.
+    """
     def __init__(self, solutions, axioms, get_ax_name, thres=None):
         super().__init__(solutions, axioms, get_ax_name)
         self.thres = thres
@@ -144,7 +149,7 @@ class CommonPairs(Compress):
     def common_subseq(self):
         """
         Finds common subsequences among solutions where any (current action, next action)
-        pair within subsequence appears a fruency >= thres in dataset of solutions
+        pair within subsequence appears with frequency >= thres in dataset of solutions
         """
         thres = self.num_ax**(-0.75) if self.thres is None else self.thres # -0.75 is just an arbitrary number between -1 and 0 that I chose
         thres = int(np.ceil(len(solutions) * thres))
@@ -153,6 +158,65 @@ class CommonPairs(Compress):
         print(graph.astype(int))
         util.draw_graph(self.num_ax, graph)
         return CommonPairs.maximal_paths(self.num_ax, graph)
+
+
+
+
+class IterAbsPairs(Compress):
+    def __init__(self, solutions, axioms, get_ax_name, thres=None):
+        super().__init__(solutions, axioms, get_ax_name)
+        self.thres = thres
+
+
+    def get_frequencies(self):
+        """
+        Gets frequencies of (current action, next action) pairs
+        """
+        frequencies = np.zeros((self.num_ax, self.num_ax), dtype=int)
+        for i in range(len(self.solutions)):
+            sol = self.solutions[i]["solution"]
+            for step in range(1, len(sol)-1):
+                action_cur = self.axiom_index[get_ax_name(sol[step]["action"])]
+                action_next = self.axiom_index[get_ax_name(sol[step+1]["action"])]
+                frequencies[action_cur, action_next] += 1
+        
+        return frequencies
+
+    
+    def common_subseq(self):
+        """
+        Finds common length-2 subsequences (current action, next action)
+        that appear with frequency >= thres in dataset of solutions
+        """
+        thres = self.num_ax**(-0.75) if self.thres is None else self.thres # -0.75 is just an arbitrary number between -1 and 0 that I chose
+        thres = int(np.ceil(len(solutions) * thres))
+        graph = self.get_frequencies() >= thres
+
+        pairs = set()
+        for i in range(self.num_ax):
+            for j in range(self.num_ax):
+                if graph[i,j]:
+                    pairs.add((i, j))
+
+        return pairs
+    
+
+    def iter_abstract(self, K):
+        """
+        Abstract common (cur, next) pairs iteratively K times
+        """
+        sols = self.solutions
+        axioms = self.axioms
+        for _ in range(K):
+            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.thres)
+            abstractions = abstractor.common_subseq()
+            # EDIT abstracted_sol() SUCH THAT IT RETURNS SOLUTIONS IN THE SAME FORMAT AS BEFORE
+            sols = abstractor.abstracted_sol(2, abstractions)
+            axioms = axioms + [k+len(axioms) for k in range(len(abstractions))]
+        
+        return sols, axioms
+
+
 
 
 def get_ax_name(ax_full):
