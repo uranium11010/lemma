@@ -17,49 +17,70 @@ class Compress(object):
         self.axioms = axioms
         self.get_ax_name = get_ax_name
         self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)}
+        self.new_axioms = self.axioms.copy()
+        self.new_axiom_set = set(self.new_axioms)
+        self.new_axiom_index = self.axiom_index.copy()
     
 
     def common_subseq(self):
         raise NotImplementedError
 
+
+    def get_axiom_tuple(self, solution):
+        """
+        Get tuple of integers corresponding to axioms in solution
+        solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
+        """
+        return tuple(self.axiom_index.get(self.get_ax_name(solution[i]["action"])) for i in range(1, len(solution)))
     
-    @staticmethod
-    def abstract_step(states, actions, abs_len, abstractions):
+
+    def abstract_step(self, solution, abs_len, abstractions):
         """
-        In solution, abstract out the first length-'abs_len' subsequence that is an abstraction
-        'actions' is tuple of integers denoting axioms in the solution
-        'states' is a list of states in the solution
+        In solutions, abstract out the first length-'abs_len' subsequence that is an abstraction
+        solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
         """
-        for i in range(len(actions)-abs_len+1):
-            if actions[i:i+abs_len] in abstractions:
-                new_actions = actions[:i] + (-1,) + actions[i+abs_len:]
-                new_states = states[:i+1] + states[i+abs_len:]
-                return new_states, new_actions
+        axiom_list = self.get_axiom_tuple(solution)
+        for i in range(len(solution)-abs_len):
+            if axiom_list[i:i+abs_len] in abstractions:
+                new_ax = "["
+                for j in range(i, i+abs_len-1):
+                    new_ax += self.axioms[axiom_list[j]] + "-"
+                new_ax += self.axioms[axiom_list[i+abs_len-1]] + "]"
+                if new_ax not in self.new_axiom_set:
+                    self.new_axiom_index[new_ax] = len(self.new_axioms)
+                    self.new_axioms.append(new_ax)
+                    self.new_axiom_set.add(new_ax)
+
+                # MAYBE ALSO ALLOW PUTTING TERMS INTO INFORMATION
+
+                first_steps = solution[:i+1]
+                abs_step = {"state": solution[i+abs_len]["state"], "action": new_ax}
+                last_steps = solution[i+abs_len+1:]
+                
+                return first_steps + [abs_step] + last_steps
 
     
     def abstracted_sol(self, max_len, abstractions=None):
         """
         Get abstracted solutions from set of abstractions
+        Format: same as self.solutions
+        (i.e. {"problem": problem, "solution": [{"state": state, "action": "assumption"},
+                                                {"state": state, "action": "axiom_name, term"}, ...]}
         """
         if abstractions is None:
             abstractions = self.common_subseq()
         
-        new_sols = [([self.solutions[i]["solution"][step]["state"] for step in range(len(self.solutions[i]["solution"]))],
-                    tuple(self.axiom_index[self.get_ax_name(self.solutions[i]["solution"][step]["action"])] for step in range(1, len(self.solutions[i]["solution"]))))
-                             for i in range(len(self.solutions))]
-        for i in range(len(new_sols)):
-            new_sol = new_sols[i]
-            # print("BEGIN", new_sol[1])
-            for abs_len in range(max_len, 1, -1):
+        new_sols = self.solutions.copy()
+        for abs_len in range(max_len, 1, -1):
+            for i in range(len(new_sols)):
+                # print("BEGIN", new_sol[1])
                 while True:
-                    res = CommonPairs.abstract_step(*new_sol, abs_len, abstractions)
+                    res = self.abstract_step(new_sols[i]["solution"], abs_len, abstractions)
                     if res is None:
                         break
                     else:
-                        new_sol = res
+                        new_sols[i]["solution"] = res
                         # print("ABS_LEN", abs_len, new_sol[1])
-            
-            new_sols[i] = new_sol
         
         return new_sols
 
@@ -146,7 +167,7 @@ class CommonPairs(Compress):
         return set(paths)
 
 
-    def common_subseq(self):
+    def common_subseq(self, draw=False):
         """
         Finds common subsequences among solutions where any (current action, next action)
         pair within subsequence appears with frequency >= thres in dataset of solutions
@@ -155,8 +176,10 @@ class CommonPairs(Compress):
         thres = int(np.ceil(len(solutions) * thres))
         graph = self.get_frequencies() >= thres
 
-        print(graph.astype(int))
-        util.draw_graph(self.num_ax, graph)
+        if draw:
+            print(graph.astype(int))
+            util.draw_graph(self.num_ax, graph)
+
         return CommonPairs.maximal_paths(self.num_ax, graph)
 
 
@@ -210,9 +233,8 @@ class IterAbsPairs(Compress):
         for _ in range(K):
             abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.thres)
             abstractions = abstractor.common_subseq()
-            # EDIT abstracted_sol() SUCH THAT IT RETURNS SOLUTIONS IN THE SAME FORMAT AS BEFORE
             sols = abstractor.abstracted_sol(2, abstractions)
-            axioms = axioms + [k+len(axioms) for k in range(len(abstractions))]
+            axioms = abstractor.new_axioms
         
         return sols, axioms
 
@@ -230,9 +252,14 @@ if __name__ == "__main__":
     solutions = util.load_solutions("equations-8k.json")
     _, axioms = util.load_axioms("equation_axioms.json")
 
+    # TEST RANDOM THINGS
     # freq = get_frequencies(solutions, num_ax, axioms, get_ax_name)
     # print(freq)
     # common_subseq(solutions, num_ax, axioms, get_ax_name)
+    # compressor = CommonPairs(solutions, axioms, get_ax_name)
+    # ex_sol = compressor.solutions[0]
+    # util.print_solution(ex_sol)
+    # print(compressor.get_axiom_list(ex_sol["solution"]))
 
     # TEST DFS AND maximal_paths(..)
     # graph = np.array(
@@ -248,15 +275,18 @@ if __name__ == "__main__":
     # print(paths)
     # print(maximal_paths(6, graph))
 
-    compressor = CommonPairs(solutions, axioms, get_ax_name)
-    abstractions = compressor.common_subseq()
-    # print(abstractions)
-    abs_sol = compressor.abstracted_sol(5, abstractions=abstractions)
+    # TEST CommonPairs
+    # compressor = CommonPairs(solutions, axioms, get_ax_name)
+    # abstractions = compressor.common_subseq()
+    # # print(abstractions)
+    # abs_sol = compressor.abstracted_sol(5, abstractions=abstractions)
+    # ex_sol = abs_sol[59]
+    # util.print_solution(ex_sol)
+
+    # TEST IterAbsPairs
+    compressor = IterAbsPairs(solutions, axioms, get_ax_name)
+    abs_sol, abs_ax = compressor.iter_abstract(5)
+    print(abs_ax)
     ex_sol = abs_sol[59]
-    print("State 0:", ex_sol[0][0])
-    for i in range(1, len(ex_sol[0])):
-        ax_idx = ex_sol[1][i-1]
-        ax = axioms[ax_idx] if ax_idx >= 0 else "ABSTRACTION"
-        print("Action {}:".format(i), ax)
-        print("State {}:".format(i), ex_sol[0][i])
+    util.print_solution(ex_sol)
 
