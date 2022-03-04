@@ -1,0 +1,3 @@
+[submodule "mathematical-abstractions"]
+	path = mathematical-abstractions
+	url = https://github.com/gpoesia/mathematical-abstractions
