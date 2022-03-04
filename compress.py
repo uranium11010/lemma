@@ -11,15 +11,16 @@ import util
 
 
 class Compress(object):
-    def __init__(self, solutions, axioms, get_ax_name):
-        self.solutions = solutions
-        self.num_ax = len(axioms)
-        self.axioms = axioms
-        self.get_ax_name = get_ax_name
-        self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)}
-        self.new_axioms = self.axioms.copy()
+    def __init__(self, solutions, axioms, get_ax_name, get_ax_param):
+        self.solutions = solutions # list of solutions of the form {"problem": .., "solution": [{"state": .., "action": ..}, ..]}
+        self.num_ax = len(axioms) # num of axioms
+        self.axioms = axioms # list of (names of) axioms
+        self.get_ax_name = get_ax_name # function retrieving axiom name from action name (e.g. returns "subsub" for "subsub 1, ((-2) - 9x)")
+        self.get_ax_param = get_ax_param # function retrieving parameters from axiom name (e.g. returns "1, ((-2) - 9x)" from "subsub 1, ((-2) - 9x))")
+        self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)} # dictionary mapping axiom names to their indices (as in the list self.axioms)
+        self.new_axioms = self.axioms.copy() # list containing axioms + additional actions as abstractions (called "new axioms")
         self.new_axiom_set = set(self.new_axioms)
-        self.new_axiom_index = self.axiom_index.copy()
+        self.new_axiom_index = self.axiom_index.copy() # dictionary mapping new axioms to their indices in self.new_axioms
     
 
     def common_subseq(self):
@@ -39,22 +40,29 @@ class Compress(object):
         In solutions, abstract out the first length-'abs_len' subsequence that is an abstraction
         solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
         """
-        axiom_list = self.get_axiom_tuple(solution)
+        axiom_list = self.get_axiom_tuple(solution) # tuple of integers for axioms
         for i in range(len(solution)-abs_len):
             if axiom_list[i:i+abs_len] in abstractions:
+                # new axiom name
                 new_ax = "["
                 for j in range(i, i+abs_len-1):
                     new_ax += self.axioms[axiom_list[j]] + "-"
                 new_ax += self.axioms[axiom_list[i+abs_len-1]] + "]"
+                
                 if new_ax not in self.new_axiom_set:
                     self.new_axiom_index[new_ax] = len(self.new_axioms)
                     self.new_axioms.append(new_ax)
                     self.new_axiom_set.add(new_ax)
 
-                # MAYBE ALSO ALLOW PUTTING TERMS INTO INFORMATION
-
+                # new axiom params
+                try:
+                    param_list = [self.get_ax_param(solution[j+1]["action"]) for j in range(i, i+abs_len)]
+                except TypeError:
+                    print(self.get_ax_param, solution[j+1]["action"])
+                new_param = "; ".join(param_list)
+                
                 first_steps = solution[:i+1]
-                abs_step = {"state": solution[i+abs_len]["state"], "action": new_ax}
+                abs_step = {"state": solution[i+abs_len]["state"], "action": new_ax+" "+new_param}
                 last_steps = solution[i+abs_len+1:]
                 
                 return first_steps + [abs_step] + last_steps
@@ -93,8 +101,8 @@ class CommonPairs(Compress):
     digraph with these pairs as edges.
     Uses paths of this digraph as abstractions.
     """
-    def __init__(self, solutions, axioms, get_ax_name, thres=None):
-        super().__init__(solutions, axioms, get_ax_name)
+    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None):
+        super().__init__(solutions, axioms, get_ax_name, get_ax_param)
         self.thres = thres
 
     def get_frequencies(self):
@@ -186,8 +194,8 @@ class CommonPairs(Compress):
 
 
 class IterAbsPairs(Compress):
-    def __init__(self, solutions, axioms, get_ax_name, thres=None):
-        super().__init__(solutions, axioms, get_ax_name)
+    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None):
+        super().__init__(solutions, axioms, get_ax_name, get_ax_param)
         self.thres = thres
 
 
@@ -231,7 +239,7 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K):
-            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.thres)
+            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.get_ax_param, self.thres)
             abstractions = abstractor.common_subseq()
             sols = abstractor.abstracted_sol(2, abstractions)
             axioms = abstractor.new_axioms
@@ -245,7 +253,19 @@ def get_ax_name(ax_full):
     """
     Get name of axiom from a string 'ax_full' specifying both axiom and what it's applied to
     """
-    return ax_full.split()[0]
+    for i, c in enumerate(ax_full):
+        if c == " ":
+            return ax_full[:i]
+    return ax_full
+
+def get_ax_param(ax_full):
+    """
+    Get parameters of axiom from a string 'ax_full' specifying both axiom and what it's applied to
+    """
+    for i, c in enumerate(ax_full):
+        if c == " ":
+            return ax_full[i+1:]
+    return ""
 
 
 if __name__ == "__main__":
@@ -276,17 +296,21 @@ if __name__ == "__main__":
     # print(maximal_paths(6, graph))
 
     # TEST CommonPairs
-    # compressor = CommonPairs(solutions, axioms, get_ax_name)
+    # compressor = CommonPairs(solutions, axioms, get_ax_name, get_ax_param)
     # abstractions = compressor.common_subseq()
-    # # print(abstractions)
+    # # print(len(abstractions))
     # abs_sol = compressor.abstracted_sol(5, abstractions=abstractions)
+    # print(len(compressor.new_axioms))
     # ex_sol = abs_sol[59]
     # util.print_solution(ex_sol)
 
     # TEST IterAbsPairs
-    compressor = IterAbsPairs(solutions, axioms, get_ax_name)
-    abs_sol, abs_ax = compressor.iter_abstract(5)
+    # util.print_solution(solutions[59])
+    compressor = IterAbsPairs(solutions, axioms, get_ax_name, get_ax_param)
+    abs_sol, abs_ax = compressor.iter_abstract(3)
     print(abs_ax)
+    with open("abstractions/IterAbsPair-8k.json", "w") as f:
+        json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
     ex_sol = abs_sol[59]
     util.print_solution(ex_sol)
 
