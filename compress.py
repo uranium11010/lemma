@@ -309,7 +309,7 @@ if __name__ == "__main__":
     compressor = IterAbsPairs(solutions, axioms, get_ax_name, get_ax_param)
     abs_sol, abs_ax = compressor.iter_abstract(3)
     print(abs_ax)
-    with open("abstractions/IterAbsPair-8k.json", "w") as f:
+    with open("IterAbsPair-8k.json", "w") as f:
         json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
     ex_sol = abs_sol[59]
     util.print_solution(ex_sol)
