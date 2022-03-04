@@ -55,10 +55,7 @@ class Compress(object):
                     self.new_axiom_set.add(new_ax)
 
                 # new axiom params
-                try:
-                    param_list = [self.get_ax_param(solution[j+1]["action"]) for j in range(i, i+abs_len)]
-                except TypeError:
-                    print(self.get_ax_param, solution[j+1]["action"])
+                param_list = [self.get_ax_param(solution[j+1]["action"]) for j in range(i, i+abs_len)]
                 new_param = "; ".join(param_list)
                 
                 first_steps = solution[:i+1]
