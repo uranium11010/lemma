@@ -4,8 +4,8 @@ Simple compression algorithm that finds common subsequences of actions and abstr
 
 import json
 import numpy as np
-import matplotlib.pyplot as plt
 import warnings
+import argparse
 
 import util
 
@@ -191,9 +191,10 @@ class CommonPairs(Compress):
 
 
 class IterAbsPairs(Compress):
-    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None):
+    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None, top=None):
         super().__init__(solutions, axioms, get_ax_name, get_ax_param)
         self.thres = thres
+        self.top = top
 
 
     def get_frequencies(self):
@@ -216,17 +217,22 @@ class IterAbsPairs(Compress):
         Finds common length-2 subsequences (current action, next action)
         that appear with frequency >= thres in dataset of solutions
         """
-        thres = self.num_ax**(-0.75) if self.thres is None else self.thres # -0.75 is just an arbitrary number between -1 and 0 that I chose
+        if self.thres is None:
+            thres = self.num_ax**(-0.75) if self.top is None else 0 # -0.75 is just an arbitrary exponent that's intuitive
+        else:
+            thres = self.thres
         thres = int(np.ceil(len(solutions) * thres))
-        graph = self.get_frequencies() >= thres
 
-        pairs = set()
+        frequencies = self.get_frequencies()
+        pairs = []
         for i in range(self.num_ax):
             for j in range(self.num_ax):
-                if graph[i,j]:
-                    pairs.add((i, j))
+                if frequencies[i,j] >= thres:
+                    pairs.append((frequencies[i,j], (i, j)))
 
-        return pairs
+        pairs.sort(reverse=True)
+        pairs = pairs[:self.top]
+        return {elt[1] : elt[0] for elt in pairs}
     
 
     def iter_abstract(self, K):
@@ -236,9 +242,8 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K):
-            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.get_ax_param, self.thres)
-            abstractions = abstractor.common_subseq()
-            sols = abstractor.abstracted_sol(2, abstractions)
+            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.get_ax_param, self.thres, self.top)
+            sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
         
         return sols, axioms
@@ -303,11 +308,20 @@ if __name__ == "__main__":
 
     # TEST IterAbsPairs
     # util.print_solution(solutions[59])
-    compressor = IterAbsPairs(solutions, axioms, get_ax_name, get_ax_param)
-    abs_sol, abs_ax = compressor.iter_abstract(3)
+
+    parser = argparse.ArgumentParser(description="Find mathematical absractions.")
+    parser.add_argument("filename", type=str, help="File to store the abstractions")
+    parser.add_argument("--iter", dest="iter", type=int, default=1, help="How many times to iterate pair abstraction process")
+    parser.add_argument("--thres", dest="thres", type=float, default=None, help="Threshold frequency for abstractions")
+    parser.add_argument("--top", dest="top", metavar="k", type=int, default=None, help="Choose top k abstractions")
+
+    args = parser.parse_args()
+    compressor = IterAbsPairs(solutions, axioms, get_ax_name, get_ax_param, args.thres, args.top)
+    abs_sol, abs_ax = compressor.iter_abstract(args.iter)
     print(abs_ax)
-    with open("abstractions/IterAbsPair-8k.json", "w") as f:
+    with open(args.filename, "w") as f:
         json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
-    ex_sol = abs_sol[59]
-    util.print_solution(ex_sol)
+
+    # ex_sol = abs_sol[59]
+    # util.print_solution(ex_sol)
 
