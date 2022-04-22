@@ -9,89 +9,404 @@ import argparse
 
 import util
 
+import doctest
+
+
+class AxStep:
+    """
+    Single-axiom action
+
+    >>> AxStep(AxStep("comm 3, (x + 2)")).param
+    '(x + 2)'
+    >>> print(AxStep("refl").idx)
+    None
+    >>> str(AxStep("sub 1"))
+    'sub 1'
+    >>> str(AxStep({"name": "comm", "idx": 3, "param": "(x + 2)"}))
+    'comm 3, (x + 2)'
+    """
+
+    def __new__(cls, arg):
+        if isinstance(arg, AxStep):
+            return arg
+
+        axiom = super(AxStep, cls).__new__(cls)
+        if isinstance(arg, str):
+            axiom.ax_str = arg
+
+            i = axiom.ax_str.find(' ')
+            if i == -1:
+                axiom.name = axiom.ax_str
+                axiom.idx = None
+                axiom.param = None
+            else:
+                axiom.name = axiom.ax_str[:i]
+                j = axiom.ax_str.find(',')
+                if j == -1:
+                    axiom.idx = None
+                    axiom.param = axiom.ax_str[i+1:]
+                else:
+                    axiom.idx = int(axiom.ax_str[i+1:j])
+                    axiom.param = axiom.ax_str[j+2:]
+
+            axiom.head_idx = axiom.idx
+                
+        elif isinstance(arg, dict):
+            axiom.name = arg["name"]
+            axiom.idx = arg.get("idx")
+            axiom.head_idx = axiom.idx
+            axiom.param = arg.get("param")
+
+        else:
+            raise TypeError("Wrong arguments to AxStep")
+
+        axiom.name_str = axiom.name
+        axiom.idx_str = '$' if axiom.idx is None else str(axiom.idx)
+        axiom.param_str = '$' if axiom.param is None else axiom.param
+
+        return axiom
+
+    def __str__(self):
+        try:
+            return self.ax_str
+        except AttributeError:
+            if self.param is None:
+                self.ax_str = self.name
+            elif self.idx is None:
+                self.ax_str = f"{self.name} {self.param}"
+            else:
+                self.ax_str = f"{self.name} {self.idx}, {self.param}"
+            return self.ax_str
+
+    def __repr__(self):
+        return f"AxStep(\"{str(self)}\")"
+
+
+class Step:
+    """
+    Tuple of AxStep and Step objects
+
+    >>> step = Step([AxStep({"name": "sub", "param": "y"}), Step("refl~comm $~1, $~2x")])
+    >>> repr(step)
+    'Step("sub~refl~comm $~$~1, y~$~2x")'
+    >>> repr(Step("sub~refl~comm $~$~1, y~$~2x"))
+    'Step("sub~refl~comm $~$~1, y~$~2x")'
+    >>> step.idx[1]
+    (None, 1)
+    >>> step.head_idx
+    1
+    """
+
+    def __init__(self, arg):
+        if isinstance(arg, (list, tuple)):
+            assert all(isinstance(step, (AxStep, Step)) for step in arg)
+            self.steps = tuple(step for step in arg)
+
+            self.name = tuple(step.name for step in self.steps)
+            self.name_str = '~'.join(step.name_str for step in self.steps)
+
+            self.idx = tuple(step.idx for step in self.steps)
+            self.idx_str = '~'.join(step.idx_str for step in self.steps)
+
+            self.param = tuple(step.param for step in self.steps)
+            self.param_str = '~'.join(step.param_str for step in self.steps)
+
+            for step in self.steps:
+                i = step.head_idx
+                if i is not None:
+                    break
+            self.head_idx = i
+            
+
+        elif isinstance(arg, str):
+            if '~' not in arg:
+                ax_repr = AxStep(arg)
+
+                self.name_str = ax_repr.name_str
+                self.idx_str = ax_repr.idx_str
+                self.param_str = ax_repr.param_str
+                
+            else:
+                i = arg.find(' ')
+                j = arg.find(',')
+                self.name_str = arg[:i]
+                self.idx_str = arg[i+1:j]
+                self.param_str = arg[j+2:]
+
+            self.name = tuple(self.name_str.split('~'))
+            self.idx = tuple(map(lambda idx : None if idx == '$' else int(idx), self.idx_str.split('~')))
+            self.param = tuple(map(lambda param : None if param == '$' else param, self.param_str.split('~')))
+
+            self.steps = tuple(AxStep({"name": name, "idx": idx, "param": param}) for name, idx, param in zip(self.name, self.idx, self.param))
+
+            for step in self.steps:
+                idx = step.head_idx
+                if idx is not None:
+                    break
+            self.head_idx = idx
+
+        else:
+            raise TypeError("Arguments to Step must be list, tuple, or str")
+
+    def __str__(self):
+        try:
+            return self.step_str
+        except AttributeError:
+            self.step_str = f"{self.name_str} {self.idx_str}, {self.param_str}"
+            return self.step_str
+
+    def __repr__(self):
+        return f"Step(\"{str(self)}\")"
+
+    def __iter__(self):
+        for step in self.steps:
+            if isinstance(step, AxStep):
+                yield step
+            else:
+                yield from step
+
+        
+
+class Solution:
+    """
+    Solution stored as tuple of states (strings) and tuple of Step object
+
+    >>> sol = Solution([{"state": "2x = 3", "action": "assumption"}, {"state": "((x * 2) / 2) = (3 / 2)", "action": "div~assoc $~1, 2~2x * 1"}])
+    >>> sol.states
+    ('2x = 3', '((x * 2) / 2) = (3 / 2)')
+    >>> sol.actions[0].steps[1].param
+    '2x * 1'
+    >>> sol.actions[0].steps
+    (AxStep("div 2"), AxStep("assoc 1, 2x * 1"))
+    """
+
+    def __new__(cls, *args):
+        if isinstance(args[0], Solution) and len(args) == 1:
+            return args[0]
+
+        sol = super(Solution, cls).__new__(cls)
+        if len(args) == 1:
+            """
+            solution: {"problem": <str>, "solution": [{"state": <str>, "action": <str>}, ...]}
+            """
+            solution = args[0]["solution"]
+            # list of string of states
+            sol.states = tuple(step["state"] for step in solution)
+            # list of Step objects (tuple of AxStep/Step objects)
+            sol.actions = tuple(Step(solution[i]["action"])
+                                for i in range(1, len(solution)))
+
+        elif len(args) == 2:
+            """
+            solution: [{"state": <str>, "action": <str>}, ...] 
+            """
+            states, actions = args
+            sol.states = tuple(states)
+            sol.actions = tuple(actions)
+
+        else:
+            raise TypeError("Wrong number of arguments to Solution")
+
+        return sol
+
+
+class Abstraction:
+    @staticmethod
+    def new(consider_pos, steps):
+        if consider_pos:
+            return AxSeqRelPos(steps)
+        return AxiomSeq(steps)
+
+    def has_instance(self, steps):
+        """
+        Checks whether abstraction has `steps` as instance
+        """
+        raise NotImplementedError()
+
+    def within(self, steps):
+        """
+        Checks whether abstraction is present among a list of steps
+        (e.g. Solution.actions tuple)
+        """
+        num_ax = len(self.axioms)
+        return any(self.has_instance(steps[i:i+num_ax]) for i in range(len(steps)-num_ax+1))
+
+    def __lt__(self, other):
+        return False
+
+
+class AxiomSeq(Abstraction):
+    """
+    Abstraction: sequence of axioms
+
+    >>> AxiomSeq([Step("refl"), Step([Step("sub~comm $~3, 1~3x"), Step("comm 2, 2x")])]).axioms
+    ('refl', 'sub~comm~comm')
+    """
+
+    def __init__(self, args):
+        """
+        Builds abstraction from list of Step objects or list of axioms
+        """
+        if all(isinstance(step, Step) for step in args):
+            self.axioms = tuple(step.name_str for step in args)
+        elif all(isinstance(step_name, str) for step_name in args):
+            self.axioms = tuple(args)
+
+    def has_instance(self, steps):
+        """
+        >>> seq = AxiomSeq([Step("refl"), Step("sub~comm $~3, 1~3x")])
+        >>> seq.within((Step("refl~refl $~$, $~$"), Step("refl"), Step([Step("sub 1"), Step("comm 6, 1y")])))
+        True
+        """
+        return all(axiom == step.name_str for axiom, step in zip(self.axioms, steps))
+
+    def __str__(self):
+        try:
+            return self.name_str
+        except AttributeError:
+            self.name_str = '~'.join(self.axioms)
+            return self.name_str
+
+    def __repr__(self):
+        return f"AxiomSeq{str(self.axioms)}"
+
+    def __eq__(self, other):
+        return self.axioms == other.axioms
+
+    def __hash__(self):
+        return hash(self.axioms)
+
+
+class AxSeqRelPos(Abstraction):
+    """
+    Abstraction: sequence of axioms + relative positions of application
+    DOES NOT FULLY SUPPORT NESTED ABSTRACTIONS (CURRENTLY LOSES POSITION INFO)
+
+    >>> AxSeqRelPos([Step("refl"), Step((AxStep("sub 1"), Step("comm 3, 3x"))), Step("comm 2, 2x")]).rel_pos
+    (None, -1)
+    """
+
+    def __init__(self, steps):
+        """
+        Builds abstraction from list of Step objects
+        """
+        self.axioms = tuple(step.name_str for step in steps)
+        self.rel_pos = tuple(steps[i+1].head_idx - steps[i].head_idx
+                             if steps[i+1].head_idx is not None and steps[i].head_idx is not None
+                             else None
+                             for i in range(len(steps)-1))
+
+
+    def has_instance(self, steps):
+        """
+        >>> seq = AxSeqRelPos([Step("eval 3, 2/2"), Step([Step("sub~comm $~3, 1~3x")])])
+        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 3, 1/5"), Step([Step("sub 1"), AxStep("comm 6, 1y")])))
+        False
+        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 5, 1/5"), Step([Step("sub 1"), AxStep("comm 5, 1y")])))
+        True
+        """
+        if not all(axiom == step.name_str for axiom, step in zip(self.axioms, steps)):
+            return False
+        return all(self.rel_pos[i] is None or steps[i+1].head_idx - steps[i].head_idx == self.rel_pos[i] for i in range(len(self.rel_pos)))
+
+    def __str__(self):
+        try:
+            return f"{self.name_str} {self.pos_str}"
+        except AttributeError:
+            self.name_str = '~'.join(self.axioms)
+            self.pos_str = '~'.join('$' if pos is None else str(pos) for pos in self.rel_pos)
+            return f"{self.name_str} {self.pos_str}"
+
+    def __repr__(self):
+        return f"AxiomSeq{str(self.axioms)}"
+
+    def __eq__(self, other):
+        return self.axioms == other.axioms and self.rel_pos == other.rel_pos
+
+    def __hash__(self):
+        return hash(self.axioms) + hash(self.rel_pos)
+
 
 class Compress(object):
-    def __init__(self, solutions, axioms, get_ax_name, get_ax_param):
-        self.solutions = solutions # list of solutions of the form {"problem": .., "solution": [{"state": .., "action": ..}, ..]}
-        self.num_ax = len(axioms) # num of axioms
-        self.axioms = axioms # list of (names of) axioms
-        self.get_ax_name = get_ax_name # function retrieving axiom name from action name (e.g. returns "subsub" for "subsub 1, ((-2) - 9x)")
-        self.get_ax_param = get_ax_param # function retrieving parameters from axiom name (e.g. returns "1, ((-2) - 9x)" from "subsub 1, ((-2) - 9x))")
-        self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)} # dictionary mapping axiom names to their indices (as in the list self.axioms)
-        self.new_axioms = self.axioms.copy() # list containing axioms + additional actions as abstractions (called "new axioms")
+    def __init__(self, solutions, axioms, consider_pos=False):
+        self.solutions = list(Solution(sol) for sol in solutions)
+
+        self.num_ax = len(axioms)  # num of axioms
+        self.axioms = axioms  # list of (names of) axioms
+        self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)}  # dictionary mapping axiom names to their indices (as in the list self.axioms)
+        self.new_axioms = self.axioms.copy()  # list containing axioms + additional actions as abstractions (called "new axioms")
         self.new_axiom_set = set(self.new_axioms)
-        self.new_axiom_index = self.axiom_index.copy() # dictionary mapping new axioms to their indices in self.new_axioms
+        self.new_axiom_index = self.axiom_index.copy()  # dictionary mapping new axioms to their indices in self.new_axioms
+
+        self.consider_pos = consider_pos
     
 
-    def common_subseq(self):
+    def abstract(self):
+        """
+        Returns list of Abstraction objects
+        """
         raise NotImplementedError
 
-
-    def get_axiom_tuple(self, solution):
-        """
-        Get tuple of integers corresponding to axioms in solution
-        solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
-        """
-        return tuple(self.axiom_index.get(self.get_ax_name(solution[i]["action"])) for i in range(1, len(solution)))
-    
+    # OLD
+    # def get_axiom_tuple(self, solution):
+    #     """
+    #     Get tuple of integers corresponding to axioms in solution
+    #     solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
+    #     """
+    #     if self.get_ax_pos:
+    #         return tuple((self.axiom_index.get(self.get_ax_name(solution[i]["action"])),
+    #                       self.get_ax_pos(solution[i]["action"]))
+    #                      for i in range(1, len(solution)))
+    #     return tuple(self.axiom_index.get(self.get_ax_name(solution[i]["action"]))
+    #                  for i in range(1, len(solution)))
 
     def abstract_step(self, solution, abs_len, abstractions):
         """
-        In solutions, abstract out the first length-'abs_len' subsequence that is an abstraction
-        solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
+        In solution, abstract out the first length-'abs_len' subsequence that is an abstraction
+        solution: Solution object
         """
-        axiom_list = self.get_axiom_tuple(solution) # tuple of integers for axioms
-        for i in range(len(solution)-abs_len):
-            if axiom_list[i:i+abs_len] in abstractions:
-                # new axiom name
-                new_ax = "["
-                for j in range(i, i+abs_len-1):
-                    new_ax += self.axioms[axiom_list[j]] + "-"
-                new_ax += self.axioms[axiom_list[i+abs_len-1]] + "]"
-                
+        axiom_list = solution.actions  # list of Step objects
+        for i in range(len(solution.actions)-abs_len+1):
+            ax_subseq = axiom_list[i:i+abs_len]
+            new_ax = Abstraction.new(self.consider_pos, ax_subseq)
+            if new_ax in abstractions:
                 if new_ax not in self.new_axiom_set:
                     self.new_axiom_index[new_ax] = len(self.new_axioms)
                     self.new_axioms.append(new_ax)
                     self.new_axiom_set.add(new_ax)
 
-                # new axiom params
-                param_list = [self.get_ax_param(solution[j+1]["action"]) for j in range(i, i+abs_len)]
-                new_param = "; ".join(param_list)
-                
-                first_steps = solution[:i+1]
-                abs_step = {"state": solution[i+abs_len]["state"], "action": new_ax+" "+new_param}
-                last_steps = solution[i+abs_len+1:]
-                
-                return first_steps + [abs_step] + last_steps
+                    new_states = solution.states[:i+1] + solution.states[i+abs_len:]
+                    new_actions = solution.actions[:i] + (Step(ax_subseq),) + solution.actions[i+abs_len:]
+
+                    return Solution(new_states, new_actions)
 
     
     def abstracted_sol(self, max_len, abstractions=None):
         """
         Get abstracted solutions from set of abstractions
         Format: same as self.solutions
-        (i.e. {"problem": problem, "solution": [{"state": state, "action": "assumption"},
-                                                {"state": state, "action": "axiom_name, term"}, ...]}
+        (i.e. tuple of Solution objects)
         """
         if abstractions is None:
-            abstractions = self.common_subseq()
+            abstractions = self.abstract()
         
         new_sols = self.solutions.copy()
         for abs_len in range(max_len, 1, -1):
             for i in range(len(new_sols)):
                 # print("BEGIN", new_sol[1])
                 while True:
-                    res = self.abstract_step(new_sols[i]["solution"], abs_len, abstractions)
+                    res = self.abstract_step(new_sols[i], abs_len, abstractions)
                     if res is None:
                         break
                     else:
-                        new_sols[i]["solution"] = res
+                        new_sols[i] = res
                         # print("ABS_LEN", abs_len, new_sol[1])
         
         return new_sols
 
 
 
-
+# DEPRECATED
 class CommonPairs(Compress):
     """
     Finds common (cur, next) action pairs among solutions and constructs corresponding
@@ -110,8 +425,8 @@ class CommonPairs(Compress):
         for i in range(len(self.solutions)):
             sol = self.solutions[i]["solution"]
             for step in range(1, len(sol)-1):
-                action_cur = self.axiom_index[get_ax_name(sol[step]["action"])]
-                action_next = self.axiom_index[get_ax_name(sol[step+1]["action"])]
+                action_cur = self.axiom_index[self.get_ax_name(sol[step]["action"])]
+                action_next = self.axiom_index[self.get_ax_name(sol[step+1]["action"])]
                 frequencies[action_cur, action_next] += 1
         
         return frequencies
@@ -172,7 +487,7 @@ class CommonPairs(Compress):
         return set(paths)
 
 
-    def common_subseq(self, draw=False):
+    def abstract(self, draw=False):
         """
         Finds common subsequences among solutions where any (current action, next action)
         pair within subsequence appears with frequency >= thres in dataset of solutions
@@ -191,8 +506,8 @@ class CommonPairs(Compress):
 
 
 class IterAbsPairs(Compress):
-    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None, top=None):
-        super().__init__(solutions, axioms, get_ax_name, get_ax_param)
+    def __init__(self, solutions, axioms, thres, top, consider_pos=False):
+        super().__init__(solutions, axioms, consider_pos)
         self.thres = thres
         self.top = top
 
@@ -201,18 +516,20 @@ class IterAbsPairs(Compress):
         """
         Gets frequencies of (current action, next action) pairs
         """
-        frequencies = np.zeros((self.num_ax, self.num_ax), dtype=int)
+        frequencies = {}
         for i in range(len(self.solutions)):
-            sol = self.solutions[i]["solution"]
-            for step in range(1, len(sol)-1):
-                action_cur = self.axiom_index[get_ax_name(sol[step]["action"])]
-                action_next = self.axiom_index[get_ax_name(sol[step+1]["action"])]
-                frequencies[action_cur, action_next] += 1
+            sol = self.solutions[i]
+            for j in range(len(sol.actions)-1):
+                abstract = Abstraction.new(self.consider_pos, sol.actions[j:j+2])
+                if abstract in frequencies:
+                    frequencies[abstract] += 1
+                else:
+                    frequencies[abstract] = 1
         
         return frequencies
 
     
-    def common_subseq(self):
+    def abstract(self):
         """
         Finds common length-2 subsequences (current action, next action)
         that appear with frequency >= thres in dataset of solutions
@@ -225,10 +542,9 @@ class IterAbsPairs(Compress):
 
         frequencies = self.get_frequencies()
         pairs = []
-        for i in range(self.num_ax):
-            for j in range(self.num_ax):
-                if frequencies[i,j] >= thres:
-                    pairs.append((frequencies[i,j], (i, j)))
+        for pair, freq in frequencies.items():
+            if freq >= thres:
+                pairs.append((freq, pair))
 
         pairs.sort(reverse=True)
         pairs = pairs[:self.top]
@@ -242,7 +558,7 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K):
-            abstractor = IterAbsPairs(sols, axioms, self.get_ax_name, self.get_ax_param, self.thres, self.top)
+            abstractor = IterAbsPairs(sols, axioms, self.thres, self.top, self.consider_pos)
             sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
         
@@ -251,76 +567,28 @@ class IterAbsPairs(Compress):
 
 
 
-def get_ax_name(ax_full):
-    """
-    Get name of axiom from a string 'ax_full' specifying both axiom and what it's applied to
-    """
-    for i, c in enumerate(ax_full):
-        if c == " ":
-            return ax_full[:i]
-    return ax_full
-
-def get_ax_param(ax_full):
-    """
-    Get parameters of axiom from a string 'ax_full' specifying both axiom and what it's applied to
-    """
-    for i, c in enumerate(ax_full):
-        if c == " ":
-            return ax_full[i+1:]
-    return ""
-
-
 if __name__ == "__main__":
     solutions = util.load_solutions("equations-8k.json")
     _, axioms = util.load_axioms("equation_axioms.json")
 
-    # TEST RANDOM THINGS
-    # freq = get_frequencies(solutions, num_ax, axioms, get_ax_name)
-    # print(freq)
-    # common_subseq(solutions, num_ax, axioms, get_ax_name)
-    # compressor = CommonPairs(solutions, axioms, get_ax_name)
-    # ex_sol = compressor.solutions[0]
-    # util.print_solution(ex_sol)
-    # print(compressor.get_axiom_list(ex_sol["solution"]))
-
-    # TEST DFS AND maximal_paths(..)
-    # graph = np.array(
-    #     [[0, 0, 0, 1, 0, 0],
-    #     [0, 0, 0, 0, 0, 0],
-    #     [0, 1, 0, 0, 1, 0],
-    #     [0, 0, 1, 0, 0, 0],
-    #     [0, 1, 0, 0, 0, 0],
-    #     [0, 0, 0, 0, 0, 1]]
-    # )
-    # paths = [[0]]
-    # dfs(5, graph, 0, paths, {0}, [0])
-    # print(paths)
-    # print(maximal_paths(6, graph))
-
-    # TEST CommonPairs
-    # compressor = CommonPairs(solutions, axioms, get_ax_name, get_ax_param)
-    # abstractions = compressor.common_subseq()
-    # # print(len(abstractions))
-    # abs_sol = compressor.abstracted_sol(5, abstractions=abstractions)
-    # print(len(compressor.new_axioms))
-    # ex_sol = abs_sol[59]
-    # util.print_solution(ex_sol)
-
-    # TEST IterAbsPairs
-    # util.print_solution(solutions[59])
-
     parser = argparse.ArgumentParser(description="Find mathematical absractions.")
-    parser.add_argument("filename", type=str, help="File to store the abstractions")
-    parser.add_argument("--iter", dest="iter", type=int, default=1, help="How many times to iterate pair abstraction process")
-    parser.add_argument("--thres", dest="thres", type=float, default=None, help="Threshold frequency for abstractions")
-    parser.add_argument("--top", dest="top", metavar="k", type=int, default=None, help="Choose top k abstractions")
+    parser.add_argument("-t", dest="test", action="store_true", help="Testing")
+    parser.add_argument("--file", type=str, help="File to store the abstractions")
+    parser.add_argument("--iter", type=int, default=1, help="How many times to iterate pair abstraction process")
+    parser.add_argument("--thres", type=float, default=None, help="Threshold frequency for abstractions")
+    parser.add_argument("--top", metavar="K", type=int, default=None, help="Choose top K abstractions")
+    parser.add_argument("-p", dest="consider_pos", action="store_true", help="Whether to consider relative positions of application")
 
     args = parser.parse_args()
-    compressor = IterAbsPairs(solutions, axioms, get_ax_name, get_ax_param, args.thres, args.top)
-    abs_sol, abs_ax = compressor.iter_abstract(args.iter)
-    print(abs_ax)
-    with open(args.filename, "w") as f:
-        json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
+    if args.test:
+        doctest.testmod()
+    else:
+        compressor = IterAbsPairs(solutions, axioms, args.thres, args.top, args.consider_pos)
+        _, abs_ax = compressor.iter_abstract(args.iter)
+        abs_ax = list(map(str, abs_ax))
+        print(abs_ax)
+        with open(args.file, "w") as f:
+            json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
 
     # ex_sol = abs_sol[59]
     # util.print_solution(ex_sol)
