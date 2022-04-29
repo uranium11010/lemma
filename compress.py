@@ -165,6 +165,8 @@ class Step:
             else:
                 yield from step
 
+    def __lt__(self, other):
+        return False
         
 
 class Solution:
@@ -248,9 +250,13 @@ class AxiomSeq(Abstraction):
         Builds abstraction from list of Step objects or list of axioms
         """
         if all(isinstance(step, Step) for step in args):
+            self.ex_steps = args
             self.axioms = tuple(step.name_str for step in args)
         elif all(isinstance(step_name, str) for step_name in args):
             self.axioms = tuple(args)
+        self.freq = None
+        self.rel_pos_freq = None
+        self.rel_pos_ex_steps = None
 
     def has_instance(self, steps):
         """
@@ -268,7 +274,7 @@ class AxiomSeq(Abstraction):
             return self.name_str
 
     def __repr__(self):
-        return f"AxiomSeq{str(self.axioms)}"
+        return f"AxiomSeq{self.axioms}"
 
     def __eq__(self, other):
         return self.axioms == other.axioms
@@ -290,6 +296,8 @@ class AxSeqRelPos(Abstraction):
         """
         Builds abstraction from list of Step objects
         """
+        self.ex_steps = steps
+        self.freq = None
         self.axioms = tuple(step.name_str for step in steps)
         self.rel_pos = tuple(steps[i+1].head_idx - steps[i].head_idx
                              if steps[i+1].head_idx is not None and steps[i].head_idx is not None
@@ -318,7 +326,7 @@ class AxSeqRelPos(Abstraction):
             return f"{self.name_str} {self.pos_str}"
 
     def __repr__(self):
-        return f"AxiomSeq{str(self.axioms)}"
+        return f"AxSeqRelPos({self.axioms}, {self.rel_pos})"
 
     def __eq__(self, other):
         return self.axioms == other.axioms and self.rel_pos == other.rel_pos
@@ -328,7 +336,7 @@ class AxSeqRelPos(Abstraction):
 
 
 class Compress(object):
-    def __init__(self, solutions, axioms, consider_pos=False):
+    def __init__(self, solutions, axioms, consider_pos=False, peek_pos=False):
         self.solutions = list(Solution(sol) for sol in solutions)
 
         self.num_ax = len(axioms)  # num of axioms
@@ -336,9 +344,10 @@ class Compress(object):
         self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)}  # dictionary mapping axiom names to their indices (as in the list self.axioms)
         self.new_axioms = self.axioms.copy()  # list containing axioms + additional actions as abstractions (called "new axioms")
         self.new_axiom_set = set(self.new_axioms)
-        self.new_axiom_index = self.axiom_index.copy()  # dictionary mapping new axioms to their indices in self.new_axioms
 
+        self.frequencies = None
         self.consider_pos = consider_pos
+        self.peek_pos = peek_pos
     
 
     def abstract(self):
@@ -371,10 +380,6 @@ class Compress(object):
             new_ax = Abstraction.new(self.consider_pos, ax_subseq)
             if new_ax in abstractions:
                 if new_ax not in self.new_axiom_set:
-                    self.new_axiom_index[new_ax] = len(self.new_axioms)
-                    self.new_axioms.append(new_ax)
-                    self.new_axiom_set.add(new_ax)
-
                     new_states = solution.states[:i+1] + solution.states[i+abs_len:]
                     new_actions = solution.actions[:i] + (Step(ax_subseq),) + solution.actions[i+abs_len:]
 
@@ -390,12 +395,16 @@ class Compress(object):
         if abstractions is None:
             abstractions = self.abstract()
         
+        self.new_axioms += abstractions
+        abs_set = set(abstractions)
+        self.new_axiom_set |= abs_set
+
         new_sols = self.solutions.copy()
         for abs_len in range(max_len, 1, -1):
             for i in range(len(new_sols)):
                 # print("BEGIN", new_sol[1])
                 while True:
-                    res = self.abstract_step(new_sols[i], abs_len, abstractions)
+                    res = self.abstract_step(new_sols[i], abs_len, abs_set)
                     if res is None:
                         break
                     else:
@@ -428,7 +437,7 @@ class CommonPairs(Compress):
                 action_cur = self.axiom_index[self.get_ax_name(sol[step]["action"])]
                 action_next = self.axiom_index[self.get_ax_name(sol[step+1]["action"])]
                 frequencies[action_cur, action_next] += 1
-        
+        self.frequencies = frequencies
         return frequencies
 
 
@@ -506,8 +515,8 @@ class CommonPairs(Compress):
 
 
 class IterAbsPairs(Compress):
-    def __init__(self, solutions, axioms, thres, top, consider_pos=False):
-        super().__init__(solutions, axioms, consider_pos)
+    def __init__(self, solutions, axioms, thres, top, consider_pos=False, peek_pos=False):
+        super().__init__(solutions, axioms, consider_pos, peek_pos)
         self.thres = thres
         self.top = top
 
@@ -515,20 +524,34 @@ class IterAbsPairs(Compress):
     def get_frequencies(self):
         """
         Gets frequencies of (current action, next action) pairs
+        Also stores example abstraction for each rel. pos. if --peek
         """
         frequencies = {}
         for i in range(len(self.solutions)):
             sol = self.solutions[i]
             for j in range(len(sol.actions)-1):
                 abstract = Abstraction.new(self.consider_pos, sol.actions[j:j+2])
-                if abstract in frequencies:
-                    frequencies[abstract] += 1
+                if not self.peek_pos or self.consider_pos:
+                    if abstract in frequencies:
+                        frequencies[abstract] += 1
+                    else:
+                        frequencies[abstract] = 1
                 else:
-                    frequencies[abstract] = 1
-        
+                    wp_abs = Abstraction.new(True, sol.actions[j:j+2])
+                    with_pos, wp_ex_steps = wp_abs.rel_pos, wp_abs.ex_steps
+                    if abstract in frequencies:
+                        frequencies[abstract][0] += 1
+                        if with_pos in frequencies[abstract][1]:
+                            frequencies[abstract][1][with_pos] += 1
+                        else:
+                            frequencies[abstract][1][with_pos] = 1
+                            frequencies[abstract][2][with_pos] = wp_ex_steps
+                    else:
+                        frequencies[abstract] = [1, {with_pos: 1}, {with_pos: wp_ex_steps}]
+        self.frequencies = frequencies
         return frequencies
 
-    
+
     def abstract(self):
         """
         Finds common length-2 subsequences (current action, next action)
@@ -543,12 +566,27 @@ class IterAbsPairs(Compress):
         frequencies = self.get_frequencies()
         pairs = []
         for pair, freq in frequencies.items():
-            if freq >= thres:
-                pairs.append((freq, pair))
+            if self.peek_pos:
+                if freq[0] >= thres:
+                    pairs.append((freq[0], pair, freq[1], freq[2]))
+            else:
+                if freq >= thres:
+                    pairs.append((freq, pair))
 
         pairs.sort(reverse=True)
-        pairs = pairs[:self.top]
-        return {elt[1] : elt[0] for elt in pairs}
+        top_pairs = pairs[:self.top]
+        top_abs = []
+        if self.peek_pos:
+            for freq, pair, rel_pos_freq, rel_pos_ex_steps in top_pairs:
+                pair.freq = freq / len(solutions)
+                pair.rel_pos_freq = {rel_pos: pfreq / len(solutions) for rel_pos, pfreq in rel_pos_freq.items()}
+                pair.rel_pos_ex_steps = rel_pos_ex_steps
+                top_abs.append(pair)
+        else:
+            for freq, pair in top_pairs:
+                pair.freq = freq / len(solutions)
+                top_abs.append(pair)
+        return top_abs
     
 
     def iter_abstract(self, K):
@@ -558,7 +596,7 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K):
-            abstractor = IterAbsPairs(sols, axioms, self.thres, self.top, self.consider_pos)
+            abstractor = IterAbsPairs(sols, axioms, self.thres, self.top, self.consider_pos, self.peek_pos)
             sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
         
@@ -577,18 +615,34 @@ if __name__ == "__main__":
     parser.add_argument("--iter", type=int, default=1, help="How many times to iterate pair abstraction process")
     parser.add_argument("--thres", type=float, default=None, help="Threshold frequency for abstractions")
     parser.add_argument("--top", metavar="K", type=int, default=None, help="Choose top K abstractions")
-    parser.add_argument("-p", dest="consider_pos", action="store_true", help="Whether to consider relative positions of application")
+    parser.add_argument("-p", dest="consider_pos", action="store_true", help="Consider relative positions of application")
+    parser.add_argument("--peek", dest="peek_pos", action="store_true", help="Take peek at relative positions even when we don't consider them")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="Display example axioms")
 
     args = parser.parse_args()
     if args.test:
         doctest.testmod()
     else:
-        compressor = IterAbsPairs(solutions, axioms, args.thres, args.top, args.consider_pos)
+        compressor = IterAbsPairs(solutions, axioms, args.thres, args.top, args.consider_pos, args.peek_pos)
         _, abs_ax = compressor.iter_abstract(args.iter)
-        abs_ax = list(map(str, abs_ax))
-        print(abs_ax)
-        with open(args.file, "w") as f:
-            json.dump({"num": len(abs_ax), "axioms": abs_ax}, f)
+        if args.file is not None:
+            abs_ax_str = list(map(str, abs_ax))
+            with open(args.file, "w") as f:
+                json.dump({"num": len(abs_ax_str), "axioms": abs_ax_str}, f)
+        else:
+            if args.consider_pos or not args.peek_pos:
+                for i in range(len(axioms), len(abs_ax)):
+                    print(f"{str(abs_ax[i])}\n\t{abs_ax[i].freq}")
+                    if args.verbose:
+                        print('\tEx.  ', '   '.join(map(str, abs_ax[i].ex_steps)))
+            else:
+                for i in range(len(axioms), len(abs_ax)):
+                    print(str(abs_ax[i]))
+                    sorted_rel_pos = sorted(((freq, rp) for rp, freq in abs_ax[i].rel_pos_freq.items()), reverse=True)
+                    for freq, rp in sorted_rel_pos:
+                        print(f"\t{', '.join(map(str, rp))}\n\t\t{freq}")
+                        if args.verbose:
+                            print('\t\tEx.  ', '   '.join(map(str, abs_ax[i].rel_pos_ex_steps[rp])))
 
     # ex_sol = abs_sol[59]
     # util.print_solution(ex_sol)
