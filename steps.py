@@ -46,7 +46,7 @@ class AxStep:
                     axiom.idx = None
                     axiom.param = axiom.ax_str[i+1:]
                 else:
-                    axiom.idx = int(axiom.ax_str[i+1:j])
+                    axiom.idx = axiom.ax_str[i+1:j]
                     axiom.param = axiom.ax_str[j+2:]
 
             axiom.head_idx = axiom.idx
@@ -134,7 +134,7 @@ class Step:
                 self.param_str = arg[j+2:]
 
             self.name = tuple(self.name_str.split('~'))
-            self.idx = tuple(map(lambda idx : None if idx == '$' else int(idx), self.idx_str.split('~')))
+            self.idx = tuple(map(lambda idx : None if idx == '$' else idx, self.idx_str.split('~')))
             self.param = tuple(map(lambda param : None if param == '$' else param, self.param_str.split('~')))
 
             self.steps = tuple(AxStep({"name": name, "idx": idx, "param": param}) for name, idx, param in zip(self.name, self.idx, self.param))
