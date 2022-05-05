@@ -15,7 +15,7 @@ import doctest
 
 
 class Compress(object):
-    def __init__(self, solutions, axioms, consider_pos=False, peek_pos=False):
+    def __init__(self, solutions, axioms, config):
         self.solutions = list(Solution(sol) for sol in solutions)
 
         self.num_ax = len(axioms)  # num of axioms
@@ -25,8 +25,9 @@ class Compress(object):
         self.new_axiom_set = set(self.new_axioms)
 
         self.frequencies = None
-        self.consider_pos = consider_pos
-        self.peek_pos = peek_pos
+        self.config = config
+        self.consider_pos = config.get("consider_pos", False)
+        self.peek_pos = config.get("peek_pos", False)
     
 
     def abstract(self):
@@ -194,10 +195,10 @@ class CommonPairs(Compress):
 
 
 class IterAbsPairs(Compress):
-    def __init__(self, solutions, axioms, thres, top, consider_pos=False, peek_pos=False):
-        super().__init__(solutions, axioms, consider_pos, peek_pos)
-        self.thres = thres
-        self.top = top
+    def __init__(self, solutions, axioms, config):
+        super().__init__(solutions, axioms, config)
+        self.thres = config.get("thres")
+        self.top = config.get("top")
 
 
     def get_frequencies(self):
@@ -275,7 +276,7 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K):
-            abstractor = IterAbsPairs(sols, axioms, self.thres, self.top, self.consider_pos, self.peek_pos)
+            abstractor = IterAbsPairs(sols, axioms, self.config)
             sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
         
@@ -302,7 +303,7 @@ if __name__ == "__main__":
     if args.test:
         doctest.testmod()
     else:
-        compressor = IterAbsPairs(solutions, axioms, args.thres, args.top, args.consider_pos, args.peek_pos)
+        compressor = IterAbsPairs(solutions, axioms, vars(args))
         _, abs_ax = compressor.iter_abstract(args.iter)
         if args.file is not None:
             abs_ax_str = list(map(str, abs_ax))
