@@ -301,7 +301,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.tree:
+    if args.tree_idx:
         solutions = util.load_solutions("equations-8k-tree.json")
     else:
         solutions = util.load_solutions("equations-8k.json")
