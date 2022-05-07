@@ -96,7 +96,7 @@ class AxSeqRelPos(Abstraction):
     (None, -1)
     """
 
-    def __init__(self, steps, ex_states):
+    def __init__(self, steps, ex_states=None):
         """
         Builds abstraction from list of Step objects
         """
@@ -145,16 +145,17 @@ class AxSeqTreePos(Abstraction):
     Abstraction: sequence of axioms + relative positions of application within tree
     DOES NOT SUPPORT ABSTRACTIONS OF ABSTRACTIONS (head_idx defined badly)
 
-    >>> AxSeqRelPos([Step("refl"), Step((AxStep("sub 1"), Step("comm 3, 3x"))), Step("comm 2, 2x")]).rel_pos
-    (None, -1)
+    >>> AxSeqTreePos([Step("refl"), Step((AxStep("sub 1"), Step("comm 0.0.1, 3x"))), Step("comm 0.1, 2x")]).rel_pos
+    ((None, '0.0.1'), ('0.1', '1'))
     """
 
-    def __init__(self, steps):
+    def __init__(self, steps, ex_states=None):
         """
         Builds abstraction from list of Step objects
         step.head_idx must be a bit string
         """
         self.ex_steps = steps
+        self.ex_states = ex_states
         self.freq = None
         self.axioms = tuple(step.name_str for step in steps)
         self.rel_pos = tuple(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx)
@@ -169,10 +170,10 @@ class AxSeqTreePos(Abstraction):
             if idx2 is None:
                 return None, None
             else:
-                return None, idx2[0]
+                return None, idx2
         else:
             if idx2 is None:
-                return idx1[0], None
+                return idx1, None
             else:
                 for i in range(min(len(idx1), len(idx2))):
                     if idx1[i] != idx2[i]:
@@ -181,15 +182,15 @@ class AxSeqTreePos(Abstraction):
 
     def has_instance(self, steps):
         """
-        >>> seq = AxSeqRelPos([Step("eval 3, 2/2"), Step([Step("sub~comm $~3, 1~3x")])])
-        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 3, 1/5"), Step([Step("sub 1"), AxStep("comm 6, 1y")])))
+        >>> seq = AxSeqTreePos([Step("eval 0.1, 2/2"), Step([Step("sub~comm $~0.0, 1~3x")])])
+        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 0.0.1, 1/5"), Step([Step("sub 1"), AxStep("comm 0.1.1.1, 1y")])))
         False
-        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 5, 1/5"), Step([Step("sub 1"), AxStep("comm 5, 1y")])))
+        >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 0.1.1.1, 1/5"), Step([Step("sub 1"), AxStep("comm 0.1.1.0, 1y")])))
         True
         """
         if not all(axiom == step.name_str for axiom, step in zip(self.axioms, steps)):
             return False
-        return all(AxSeqTreePos(steps[i].head_idx, steps[i+1].head_idx) == self.rel_pos[i] for i in range(len(self.rel_pos)))
+        return all(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx) == self.rel_pos[i] for i in range(len(self.rel_pos)))
 
     def __str__(self):
         try:
@@ -200,10 +201,14 @@ class AxSeqTreePos(Abstraction):
             return f"{self.name_str} {self.pos_str}"
 
     def __repr__(self):
-        return f"AxSeqRelPos({self.axioms}, {self.rel_pos})"
+        return f"AxSeqTreePos({self.axioms}, {self.rel_pos})"
 
     def __eq__(self, other):
         return self.axioms == other.axioms and self.rel_pos == other.rel_pos
 
     def __hash__(self):
         return hash(self.axioms) + hash(self.rel_pos)
+
+
+if __name__ == "__main__":
+    doctest.testmod()
