@@ -59,11 +59,10 @@ class Compress(object):
             ax_subseq = axiom_list[i:i+abs_len]
             new_ax = Abstraction.new(self.config, ax_subseq)
             if new_ax in abstractions:
-                if new_ax not in self.new_axiom_set:
-                    new_states = solution.states[:i+1] + solution.states[i+abs_len:]
-                    new_actions = solution.actions[:i] + (Step(ax_subseq),) + solution.actions[i+abs_len:]
+                new_states = solution.states[:i+1] + solution.states[i+abs_len:]
+                new_actions = solution.actions[:i] + (Step(ax_subseq),) + solution.actions[i+abs_len:]
 
-                    return Solution(new_states, new_actions)
+                return Solution(new_states, new_actions)
 
     
     def abstracted_sol(self, max_len, abstractions=None):
@@ -291,6 +290,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find mathematical absractions.")
     parser.add_argument("-t", dest="test", action="store_true", help="Testing")
     parser.add_argument("--file", type=str, help="File to store the abstractions")
+    parser.add_argument("-s", dest="small", action="store_true", help="Whether to use small dataset")
     parser.add_argument("--iter", type=int, default=1, help="How many times to iterate pair abstraction process")
     parser.add_argument("--thres", type=float, default=None, help="Threshold frequency for abstractions")
     parser.add_argument("--top", metavar="K", type=int, default=None, help="Choose top K abstractions")
@@ -302,42 +302,44 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.tree_idx:
-        solutions = util.load_solutions("equations-8k-tree.json")
+        solutions = util.load_solutions("equations-80k-relative.json")
     else:
-        solutions = util.load_solutions("equations-8k.json")
+        if args.small:
+            solutions = util.load_solutions("equations-8k.json")
+        else:
+            solutions = util.load_solutions("equations-80k.json")
     _, axioms = util.load_axioms("equation_axioms.json")
 
     if args.test:
         doctest.testmod()
     else:
         compressor = IterAbsPairs(solutions, axioms, vars(args))
-        _, abs_ax = compressor.iter_abstract(args.iter)
+        sols, abs_ax = compressor.iter_abstract(args.iter)
         if args.file is not None:
             abs_ax_str = list(map(str, abs_ax))
             with open(args.file, "w") as f:
                 json.dump({"num": len(abs_ax_str), "axioms": abs_ax_str}, f)
+        if args.consider_pos or not args.peek_pos:
+            for i in range(len(axioms), len(abs_ax)):
+                print(f"{str(abs_ax[i])}\n\t{abs_ax[i].freq}")
+                if args.verbose:
+                    print('\tEx.  ')
+                    for j in range(len(abs_ax[i].ex_steps)):
+                        print(f"\t\t{abs_ax[i].ex_states[j]}")
+                        print(f"\t\t\t{abs_ax[i].ex_steps[j]}")
+                    print(f"\t\t{abs_ax[i].ex_states[-1]}")
         else:
-            if args.consider_pos or not args.peek_pos:
-                for i in range(len(axioms), len(abs_ax)):
-                    print(f"{str(abs_ax[i])}\n\t{abs_ax[i].freq}")
+            for i in range(len(axioms), len(abs_ax)):
+                print(str(abs_ax[i]))
+                sorted_rel_pos = sorted(((freq, rp) for rp, freq in abs_ax[i].rel_pos_freq.items()), reverse=True)
+                for freq, rp in sorted_rel_pos:
+                    print(f"\t{', '.join(map(str, rp))}\n\t\t{freq}")
                     if args.verbose:
-                        print('\tEx.  ')
-                        for j in range(len(abs_ax[i].ex_steps)):
-                            print(f"\t\t{abs_ax[i].ex_states[j]}")
-                            print(f"\t\t\t{abs_ax[i].ex_steps[j]}")
-                        print(f"\t\t{abs_ax[i].ex_states[-1]}")
-            else:
-                for i in range(len(axioms), len(abs_ax)):
-                    print(str(abs_ax[i]))
-                    sorted_rel_pos = sorted(((freq, rp) for rp, freq in abs_ax[i].rel_pos_freq.items()), reverse=True)
-                    for freq, rp in sorted_rel_pos:
-                        print(f"\t{', '.join(map(str, rp))}\n\t\t{freq}")
-                        if args.verbose:
-                            print('\t\tEx.  ')
-                            for j in range(len(abs_ax[i].rel_pos_ex_steps[rp])):
-                                print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][j]}")
-                                print(f"\t\t\t\t{abs_ax[i].rel_pos_ex_steps[rp][j]}")
-                            print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][-1]}")
+                        print('\t\tEx.  ')
+                        for j in range(len(abs_ax[i].rel_pos_ex_steps[rp])):
+                            print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][j]}")
+                            print(f"\t\t\t\t{abs_ax[i].rel_pos_ex_steps[rp][j]}")
+                        print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][-1]}")
 
     # ex_sol = abs_sol[59]
     # util.print_solution(ex_sol)
