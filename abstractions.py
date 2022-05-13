@@ -124,11 +124,11 @@ class AxSeqRelPos(Abstraction):
 
     def __str__(self):
         try:
-            return f"{self.name_str} {self.pos_str}"
+            return f"{self.name_str}:{self.pos_str}"
         except AttributeError:
             self.name_str = '~'.join(self.axioms)
             self.pos_str = '~'.join('$' if pos is None else str(pos) for pos in self.rel_pos)
-            return f"{self.name_str} {self.pos_str}"
+            return f"{self.name_str}:{self.pos_str}"
 
     def __repr__(self):
         return f"AxSeqRelPos({self.axioms}, {self.rel_pos})"
@@ -175,9 +175,9 @@ class AxSeqTreePos(Abstraction):
             if idx2 is None:
                 return idx1, None
             else:
-                for i in range(min(len(idx1), len(idx2))):
-                    if idx1[i] != idx2[i]:
-                        break
+                i = 0
+                while i < len(idx1) and i < len(idx2) and idx1[i] == idx2[i]:
+                    i += 2  # specifically for bit string including periods separating indicees
                 return idx1[i:], idx2[i:]
 
     def has_instance(self, steps):
@@ -194,11 +194,15 @@ class AxSeqTreePos(Abstraction):
 
     def __str__(self):
         try:
-            return f"{self.name_str} {self.pos_str}"
+            return f"{self.name_str}:{self.pos_str}"
         except AttributeError:
             self.name_str = '~'.join(self.axioms)
-            self.pos_str = '~'.join('$' if pos is None else pos for pos in self.rel_pos)
-            return f"{self.name_str} {self.pos_str}"
+            def pos_str(pos):
+                str1 = '$' if pos[0] is None else pos[0]
+                str2 = '$' if pos[1] is None else pos[1]
+                return str1 + '_' + str2
+            self.pos_str = '~'.join(map(pos_str, self.rel_pos))
+            return f"{self.name_str}:{self.pos_str}"
 
     def __repr__(self):
         return f"AxSeqTreePos({self.axioms}, {self.rel_pos})"
