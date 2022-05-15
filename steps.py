@@ -169,6 +169,10 @@ class Step:
 
     @staticmethod
     def split_to_tree(string, transform=lambda x: x):
+        """
+        Parses tree given in `string` with curly braces
+        Stores tree in nested tuple structure
+        """
         brkt_map = {}  # maps '{' index to '}' index
         depth_map = {}  # maps depth to '{' index
         d = 0
@@ -183,9 +187,9 @@ class Step:
                     raise Exception("Mismatching brackets")
         if d > 0:
             raise Exception("Mismatching brackets")
-
+    
         return Step.split_to_tree_helper(string, transform, brkt_map)
-
+    
     @staticmethod
     def split_to_tree_helper(string, transform, brkt_map, i=-1):
         """
@@ -238,7 +242,7 @@ class Solution:
 
     >>> sol = Solution({"problem": "2x = 3", "solution": [{"state": "2x = 3", "action": "assumption"}, {"state": "((x * 2) / 2) = (3 / 2)", "action": "div~assoc $~1, 2~2x * 1"}]})
     >>> sol.states
-    ('2x = 3', '((x * 2) / 2) = (3 / 2)')
+    ['2x = 3', '((x * 2) / 2) = (3 / 2)']
     >>> sol.actions[0].steps[1].param
     '2x * 1'
     >>> sol.actions[0].steps
@@ -256,29 +260,36 @@ class Solution:
             """
             solution = args[0]["solution"]
             # list of string of states
-            sol.states = tuple(step["state"] for step in solution)
+            sol.states = [step["state"] for step in solution]
             # list of Step objects (tuple of AxStep/Step objects)
-            sol.actions = tuple(Step(solution[i]["action"])
-                                for i in range(1, len(solution)))
+            sol.actions = [Step(solution[i]["action"])
+                                for i in range(1, len(solution))]
 
         elif len(args) == 2:
-            """
-            solution: [{"state": <str>, "action": <str>}, ...] 
-            """
             states, actions = args
-            sol.states = tuple(states)
-            sol.actions = tuple(actions)
+            sol.states = list(states)
+            sol.actions = list(actions)
 
         else:
             raise TypeError("Wrong number of arguments to Solution")
 
         return sol
 
+    def display_compressed(self):
+        """
+        Outputs compressed string with axioms and params
+        DOESN'T WORK FOR NESTED ABSTRACTIONS
+        """
+        if len(self.actions) == 1:
+            return str(self.actions[0].steps[0])
+        return str(Step(self.actions))
+
     def __str__(self):
         return '\n'.join(self.states[i] + '\n\t' + str(self.actions[i]) for i in range(len(self.actions))) + '\n' + self.states[-1]
 
     def __repr__(self):
         return str(self)
+
 
 
 if __name__ == "__main__":

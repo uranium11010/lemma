@@ -15,12 +15,12 @@ import doctest
 
 class Abstraction:
     @staticmethod
-    def new(config, steps, ex_states=None):
+    def new(config, arg, ex_states=None):
         if config.get("consider_pos", False):
             if config.get("tree_idx", False):
-                return AxSeqTreePos(steps, ex_states)
-            return AxSeqRelPos(steps, ex_states)
-        return AxiomSeq(steps, ex_states)
+                return AxSeqTreePos(arg, ex_states)
+            return AxSeqRelPos(arg, ex_states)
+        return AxiomSeq(arg, ex_states)
 
     def has_instance(self, steps):
         """
@@ -36,7 +36,21 @@ class Abstraction:
         num_ax = len(self.axioms)
         return any(self.has_instance(steps[i:i+num_ax]) for i in range(len(steps)-num_ax+1))
 
+    def next_step_rules(self):
+        """
+        Generator yielding checkers that check whether a next state corresponds to abstraction
+        The yielded checker takes proposed next state and current steps taken so far (Solution object)
+        """
+        raise NotImplementedError()
+
+    def __iter__(self):
+        """
+        Allows iteration through the constituents of the abstraction
+        """
+        raise NotImplementedError()
+
     def __lt__(self, other):
+        # to make sorting work when getting top-frequency abstractions
         return False
 
 
@@ -143,23 +157,43 @@ class AxSeqRelPos(Abstraction):
 class AxSeqTreePos(Abstraction):
     """
     Abstraction: sequence of axioms + relative positions of application within tree
-    DOES NOT SUPPORT ABSTRACTIONS OF ABSTRACTIONS (head_idx defined badly)
+    DOES NOT SUPPORT ABSTRACTIONS OF ABSTRACTIONS (3rd test case will fail)
 
     >>> AxSeqTreePos([Step("refl"), Step((AxStep("sub 1"), Step("comm 0.0.1, 3x"))), Step("comm 0.1, 2x")]).rel_pos
     ((None, '0.0.1'), ('0.1', '1'))
+    >>> AxSeqTreePos("assoc~eval:_1").rel_pos
+    (('', '1'),)
+    >>> AxSeqTreePos("{{sub~{assoc~eval:_1}:$_0.0}~eval:0_1}~{comm~{{div~{assoc~eval:_1}:$_0.0}~{mul1~eval:0_1}:_}:_}:_").axioms[0].axioms
+    (AxSeqTreePos("sub~{assoc~eval:_1}:$_0.0"), eval)
     """
 
-    def __init__(self, steps, ex_states=None):
+    def __init__(self, arg, ex_states=None):
         """
-        Builds abstraction from list of Step objects
+        Builds abstraction from list of Step objects or a string
         step.head_idx must be a bit string
         """
-        self.ex_steps = steps
         self.ex_states = ex_states
         self.freq = None
-        self.axioms = tuple(step.name_str for step in steps)
-        self.rel_pos = tuple(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx)
-                             for i in range(len(steps)-1))
+
+        if isinstance(arg, str):
+            k = arg.find(':')
+            if k == -1:
+                self.axioms = (arg,)
+                self.rel_pos = ()
+            else:
+                ax_str = arg[:k]
+                pos_str = arg[k+1:]
+                self.axioms = tuple(ax_str.split('~'))
+                split_pos_str = pos_str.split('~')
+                self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
+            self.ex_steps = None
+
+        else:
+            steps = arg
+            self.ex_steps = steps
+            self.axioms = tuple(step.name_str for step in steps)
+            self.rel_pos = tuple(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx)
+                                 for i in range(len(steps)-1))
 
     @staticmethod
     def remove_prefix(idx1, idx2):
@@ -192,6 +226,57 @@ class AxSeqTreePos(Abstraction):
             return False
         return all(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx) == self.rel_pos[i] for i in range(len(self.rel_pos)))
 
+    def next_step_rules(self):
+        """
+        NOT USED
+        Currently just for len-2 abstractions
+        
+        >>> seq = AxSeqTreePos("assoc~eval:_1")
+        >>> for checker in seq.next_step_rules():
+        ...     print(checker(Step("eval 0.0.0.1, 3 - 3"), Solution(["", ""], [Step("assoc 0.0.0, (x + 3) - 3")])))
+        ...
+        True
+        """
+        for i in range(len(self.rel_pos)):
+            next_ax = self.axioms[i+1]
+            rp = self.rel_pos[i]
+            def checker(next_step, cur_steps):
+                """
+                next_step is Step object; cur_steps is Solution object
+                """
+                last_step = cur_steps.actions[-1]
+                check_name = next_step.name[0] == next_ax
+                check_rp = AxSeqTreePos.remove_prefix(last_step.head_idx, next_step.head_idx) == rp
+                return check_name and check_rp
+            yield checker  # warning: behavior of checker changes during iterations due to static scoping
+
+    @staticmethod
+    def get_abs_elt(next_step, cur_steps):
+        """
+        >>> AxSeqTreePos.get_abs_elt(Step("eval 0.0.0.1, 3 - 3"), Solution(["", ""], [Step("assoc 0.0.0, (x + 3) - 3")]))
+        (('', '1'), 'eval')
+        """
+        if len(cur_steps.actions) == 0:
+            return next_step.name[0]
+        last_step = cur_steps.actions[-1]
+        return (AxSeqTreePos.remove_prefix(last_step.head_idx, next_step.head_idx), next_step.name[0])
+
+    def __iter__(self):
+        """
+        Currently doesn't support nested abstractions
+
+        >>> seq = AxSeqTreePos("comm~assoc~eval:0_~_1")
+        >>> for elt in seq:
+        ...     print(elt)
+        ...
+        comm
+        (('0', ''), 'assoc')
+        (('', '1'), 'eval')
+        """
+        yield self.axioms[0]
+        for i in range(len(self.rel_pos)):
+            yield (self.rel_pos[i], self.axioms[i+1])
+                
     def __str__(self):
         try:
             return f"{self.name_str}:{self.pos_str}"
