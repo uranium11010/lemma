@@ -16,9 +16,9 @@ import doctest
 class Abstraction:
     @staticmethod
     def new(config, arg, ex_states=None):
+        if config.get("tree_idx", False):
+            return AxSeqTreePos(arg, ex_states)
         if config.get("consider_pos", False):
-            if config.get("tree_idx", False):
-                return AxSeqTreePos(arg, ex_states)
             return AxSeqRelPos(arg, ex_states)
         return AxiomSeq(arg, ex_states)
 
@@ -36,10 +36,10 @@ class Abstraction:
         num_ax = len(self.axioms)
         return any(self.has_instance(steps[i:i+num_ax]) for i in range(len(steps)-num_ax+1))
 
-    def next_step_rules(self):
+    @staticmethod
+    def get_abs_elt(next_step, cur_steps):
         """
-        Generator yielding checkers that check whether a next state corresponds to abstraction
-        The yielded checker takes proposed next state and current steps taken so far (Solution object)
+        Gets abstraction element corresponding to `next_step`, given `cur_steps`
         """
         raise NotImplementedError()
 
@@ -48,6 +48,9 @@ class Abstraction:
         Allows iteration through the constituents of the abstraction
         """
         raise NotImplementedError()
+
+    def __len__(self):
+        return self.length
 
     def __lt__(self, other):
         # to make sorting work when getting top-frequency abstractions
@@ -160,22 +163,26 @@ class AxSeqTreePos(Abstraction):
     DOES NOT SUPPORT ABSTRACTIONS OF ABSTRACTIONS (3rd test case will fail)
 
     >>> AxSeqTreePos([Step("refl"), Step((AxStep("sub 1"), Step("comm 0.0.1, 3x"))), Step("comm 0.1, 2x")]).rel_pos
-    ((None, '0.0.1'), ('0.1', '1'))
+    ((None, None), ('0.1', '1'))
     >>> AxSeqTreePos("assoc~eval:_1").rel_pos
     (('', '1'),)
-    >>> AxSeqTreePos("{{sub~{assoc~eval:_1}:$_0.0}~eval:0_1}~{comm~{{div~{assoc~eval:_1}:$_0.0}~{mul1~eval:0_1}:_}:_}:_").axioms[0].axioms
-    (AxSeqTreePos("sub~{assoc~eval:_1}:$_0.0"), eval)
+    >>> print(AxSeqTreePos("{{sub~{assoc~eval:_1}:$_0.0}~eval:0_1}~{comm~{{div~{assoc~eval:_1}:$_0.0}~{mul1~eval:0_1}:_}:_}:_").axioms[0].axioms)
+    (AxSeqTreePos("sub~{assoc~eval:_1}:$_0.0"), 'eval')
     """
 
     def __init__(self, arg, ex_states=None):
         """
-        Builds abstraction from list of Step objects or a string
-        step.head_idx must be a bit string
+        Builds abstraction from list of Step objects or a string representation of the abstraction
+        step.head_idx and step.tail_idx are bits
         """
         self.ex_states = ex_states
+        if hasattr(self.ex_states, "__iter__"):
+            self.ex_states = tuple(self.ex_states)
         self.freq = None
 
         if isinstance(arg, str):
+            arg = util.split_to_tree(arg, transform=lambda x, info=None: x if isinstance(x, str) else {"axioms": [elt if isinstance(elt, str) else AxSeqTreePos(elt) for elt in x], "info": info}, info_mark=':')
+            """
             k = arg.find(':')
             if k == -1:
                 self.axioms = (arg,)
@@ -186,14 +193,34 @@ class AxSeqTreePos(Abstraction):
                 self.axioms = tuple(ax_str.split('~'))
                 split_pos_str = pos_str.split('~')
                 self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
+            """
+
+        if isinstance(arg, dict):
+            # "axioms": list of Abstraction objects or strings; "info": string containing rel. pos. info
+            self.axioms = tuple(arg["axioms"])
+            split_pos_str = arg["info"].split('~')
+            self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
             self.ex_steps = None
 
         else:
-            steps = arg
-            self.ex_steps = steps
-            self.axioms = tuple(step.name_str for step in steps)
-            self.rel_pos = tuple(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx)
-                                 for i in range(len(steps)-1))
+            self.ex_steps = arg
+            def get_axioms():
+                for step in arg:
+                    if len(step) == 1:
+                        yield step.name_str
+                    elif hasattr(step, "abstraction"):
+                        yield step.abstraction
+                    else:
+                        warnings.warn("Step object doesn't have abstraction attribute")
+                        ab = AxSeqTreePos(step.steps)
+                        step.abstraction = ab
+                        yield ab
+            self.axioms = tuple(get_axioms())
+            self.rel_pos = tuple(AxSeqTreePos.remove_prefix(arg[i].tail_idx, arg[i+1].head_idx)
+                                 for i in range(len(arg)-1))
+
+        self.length = sum(1 if isinstance(ax, str) else len(ax) for ax in self.axioms)
+        self.height = 1 + max((0 if isinstance(ax, str) else ax.height) for ax in self.axioms)
 
     @staticmethod
     def remove_prefix(idx1, idx2):
@@ -216,6 +243,7 @@ class AxSeqTreePos(Abstraction):
 
     def has_instance(self, steps):
         """
+        NOT USED
         >>> seq = AxSeqTreePos([Step("eval 0.1, 2/2"), Step([Step("sub~comm $~0.0, 1~3x")])])
         >>> seq.within((Step("refl~refl $~$, $~$"), Step("eval 0.0.1, 1/5"), Step([Step("sub 1"), AxStep("comm 0.1.1.1, 1y")])))
         False
@@ -226,30 +254,6 @@ class AxSeqTreePos(Abstraction):
             return False
         return all(AxSeqTreePos.remove_prefix(steps[i].head_idx, steps[i+1].head_idx) == self.rel_pos[i] for i in range(len(self.rel_pos)))
 
-    def next_step_rules(self):
-        """
-        NOT USED
-        Currently just for len-2 abstractions
-        
-        >>> seq = AxSeqTreePos("assoc~eval:_1")
-        >>> for checker in seq.next_step_rules():
-        ...     print(checker(Step("eval 0.0.0.1, 3 - 3"), Solution(["", ""], [Step("assoc 0.0.0, (x + 3) - 3")])))
-        ...
-        True
-        """
-        for i in range(len(self.rel_pos)):
-            next_ax = self.axioms[i+1]
-            rp = self.rel_pos[i]
-            def checker(next_step, cur_steps):
-                """
-                next_step is Step object; cur_steps is Solution object
-                """
-                last_step = cur_steps.actions[-1]
-                check_name = next_step.name[0] == next_ax
-                check_rp = AxSeqTreePos.remove_prefix(last_step.head_idx, next_step.head_idx) == rp
-                return check_name and check_rp
-            yield checker  # warning: behavior of checker changes during iterations due to static scoping
-
     @staticmethod
     def get_abs_elt(next_step, cur_steps):
         """
@@ -259,41 +263,55 @@ class AxSeqTreePos(Abstraction):
         if len(cur_steps.actions) == 0:
             return next_step.name[0]
         last_step = cur_steps.actions[-1]
-        return (AxSeqTreePos.remove_prefix(last_step.head_idx, next_step.head_idx), next_step.name[0])
+        return (AxSeqTreePos.remove_prefix(last_step.tail_idx, next_step.head_idx), next_step.name[0])
 
-    def __iter__(self):
+    def __iter__(self, prev_rel_pos=None):
         """
-        Currently doesn't support nested abstractions
-
-        >>> seq = AxSeqTreePos("comm~assoc~eval:0_~_1")
+        >>> seq = AxSeqTreePos("comm~assoc~{eval~comm:1_}~{sub~eval:$_0.1}:0_~_1~0_$")
         >>> for elt in seq:
         ...     print(elt)
         ...
         comm
         (('0', ''), 'assoc')
         (('', '1'), 'eval')
+        (('1', ''), 'comm')
+        (('0', None), 'sub')
+        ((None, '0.1'), 'eval')
         """
-        yield self.axioms[0]
-        for i in range(len(self.rel_pos)):
-            yield (self.rel_pos[i], self.axioms[i+1])
+        if prev_rel_pos is None:
+            yield self.axioms[0]
+        else:
+            yield (prev_rel_pos, self.axioms[0])
+        for i in range(1, len(self.axioms)):
+            if isinstance(self.axioms[i], str):
+                yield (self.rel_pos[i-1], self.axioms[i])
+            else:
+                assert isinstance(self.axioms[i], AxSeqTreePos)
+                yield from self.axioms[i].__iter__(self.rel_pos[i-1])
                 
     def __str__(self):
-        try:
+        if hasattr(self, "name_str") and hasattr(self, "pos_str"):
             return f"{self.name_str}:{self.pos_str}"
-        except AttributeError:
-            self.name_str = '~'.join(self.axioms)
-            def pos_str(pos):
-                str1 = '$' if pos[0] is None else pos[0]
-                str2 = '$' if pos[1] is None else pos[1]
-                return str1 + '_' + str2
-            self.pos_str = '~'.join(map(pos_str, self.rel_pos))
+        def get_name_str(ax):
+            if isinstance(ax, str):
+                return ax
+            else:
+                return '{' + str(ax) + '}'
+        self.name_str = '~'.join(map(get_name_str, self.axioms))
+        def get_pos_str(pos):
+            str1 = '$' if pos[0] is None else pos[0]
+            str2 = '$' if pos[1] is None else pos[1]
+            return str1 + '_' + str2
+        self.pos_str = '~'.join(map(get_pos_str, self.rel_pos))
+        if self.pos_str:
             return f"{self.name_str}:{self.pos_str}"
+        return self.name_str
 
     def __repr__(self):
-        return f"AxSeqTreePos({self.axioms}, {self.rel_pos})"
+        return f'AxSeqTreePos("{str(self)}")'
 
     def __eq__(self, other):
-        return self.axioms == other.axioms and self.rel_pos == other.rel_pos
+        return isinstance(other, AxSeqTreePos) and self.axioms == other.axioms and self.rel_pos == other.rel_pos
 
     def __hash__(self):
         return hash(self.axioms) + hash(self.rel_pos)
