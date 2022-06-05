@@ -8,7 +8,7 @@ import warnings
 import argparse
 
 from steps import *
-import util
+import abs_util
 
 import doctest
 
@@ -181,7 +181,10 @@ class AxSeqTreePos(Abstraction):
         self.freq = None
 
         if isinstance(arg, str):
-            arg = util.split_to_tree(arg, transform=lambda x, info=None: x if isinstance(x, str) else {"axioms": [elt if isinstance(elt, str) else AxSeqTreePos(elt) for elt in x], "info": info}, info_mark=':')
+            if '~' not in arg and arg[-1] != ':':
+                arg = {"axioms": [arg], "info": ''}
+            else:
+                arg = abs_util.split_to_tree(arg, transform=lambda x, info=None: x if isinstance(x, str) else {"axioms": [elt if isinstance(elt, str) else AxSeqTreePos(elt) for elt in x], "info": info}, info_mark=':')
             """
             k = arg.find(':')
             if k == -1:

@@ -8,7 +8,7 @@ import warnings
 import argparse
 
 from abstractions import *
-import util
+import abs_util
 
 import doctest
 
@@ -129,9 +129,9 @@ class Step:
                     return None if x == '$' else x
                 else:
                     return tuple(x)
-            self.name = util.split_to_tree(self.name_str, transform=transform)
-            self.idx = util.split_to_tree(self.idx_str, transform=transform)
-            self.param = util.split_to_tree(self.param_str, transform=transform)
+            self.name = abs_util.split_to_tree(self.name_str, transform=transform)
+            self.idx = abs_util.split_to_tree(self.idx_str, transform=transform)
+            self.param = abs_util.split_to_tree(self.param_str, transform=transform)
 
             def get_step(name, idx, param):
                 if not isinstance(name, tuple):
@@ -201,7 +201,7 @@ class Step:
 
 class Solution:
     """
-    Solution stored as tuple of states (strings) and tuple of Step object
+    Solution stored as tuple of states (strings) and tuple of Step objects
 
     >>> sol = Solution({"problem": "2x = 3", "solution": [{"state": "2x = 3", "action": "assumption"}, {"state": "((x * 2) / 2) = (3 / 2)", "action": "div~assoc $~1, 2~2x * 1"}]})
     >>> sol.states
