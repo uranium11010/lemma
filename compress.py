@@ -11,7 +11,7 @@ import random
 
 from steps import *
 from abstractions import *
-import util
+import abs_util
 
 import doctest
 
@@ -188,7 +188,7 @@ class CommonPairs(Compress):
 
         if draw:
             print(graph.astype(int))
-            util.draw_graph(self.num_ax, graph)
+            abs_util.draw_graph(self.num_ax, graph)
 
         return CommonPairs.maximal_paths(self.num_ax, graph)
 
@@ -364,9 +364,9 @@ class IAPHolistic(IterAbsPairs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find mathematical absractions.")
     parser.add_argument("-t", dest="test", action="store_true", help="Testing")
-    parser.add_argument("--file", type=str, help="File to store the abstractions")
+    parser.add_argument("--file", dest="file", type=str, help="File to store the abstractions")
     parser.add_argument("--sol-file", dest="sol_file", type=str, help="File to store the abstracted solutions")
-    parser.add_argument("--num-ex-sol", dest="num_ex_sol", type=int, help="Number of example solutions to display")
+    parser.add_argument("--num-ex-sol", dest="num_ex_sol", type=int, default=0, help="Number of example solutions to display")
     parser.add_argument("-s", dest="small", action="store_true", help="Whether to use small dataset")
     parser.add_argument("--iter", type=int, default=1, help="How many times to iterate pair abstraction process")
     parser.add_argument("--thres", type=float, default=None, help="Threshold frequency for abstractions")
@@ -376,31 +376,40 @@ if __name__ == "__main__":
     parser.add_argument("--pos", dest="consider_pos", action="store_true", help="Consider relative positions of application")
     parser.add_argument("--peek", dest="peek_pos", action="store_true", help="Take peek at relative positions even when we don't consider them")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Display example axioms")
+    parser.add_argument("--use", dest="num_use", type=int, default=None, help="How many solutions to use (default: all)")
+    parser.add_argument("--store", dest="num_store", type=int, default=None, help="How many abstracted solutions to store (default: all)")
 
     args = parser.parse_args()
 
+    if args.small:
+        num_use = args.num_use or 8000
+        num_store = args.num_store or 8000
+    else:
+        num_use = args.num_use or 80000
+        num_store = args.num_store or 80000
+
     if args.tree_idx:
-        solutions = util.load_solutions("equations-80k-relative.json")
+        solutions = abs_util.load_solutions("equations-80k-relative.json")
     else:
         if args.small:
-            solutions = util.load_solutions("equations-8k.json")
+            solutions = abs_util.load_solutions("equations-8k.json")
         else:
-            solutions = util.load_solutions("equations-80k.json")
-    _, axioms = util.load_axioms("equation_axioms.json")
+            solutions = abs_util.load_solutions("equations-80k.json")
+    _, axioms = abs_util.load_axioms("equation_axioms.json")
 
     if args.test:
         doctest.testmod()
     else:
-        solutions = [Solution(sol) for sol in solutions]
+        solutions = [Solution(sol) for sol in solutions[:num_use]]
         if args.holistic:
             compressor = IAPHolistic(solutions, axioms, vars(args))
         else:
             compressor = IterAbsPairs(solutions, axioms, vars(args))
-        if args.sol_file is not None or args.num_ex_sol is not None:
+        if args.sol_file is not None or args.num_ex_sol:
             sols, abs_ax = compressor.iter_abstract(args.iter, True)
             if args.sol_file is not None:
-                with open(args.sol_file, "wb"):
-                    pickle.dump(sols)
+                with open(args.sol_file, "wb") as f:
+                    pickle.dump(sols[:num_store], f)
             else:
                 for i, ex_sol in enumerate(random.sample(sols, args.num_ex_sol)):
                     print(f"EXAMPLE SOLUTION {i+1}")
@@ -409,11 +418,11 @@ if __name__ == "__main__":
         else:
             abs_ax = compressor.iter_abstract(args.iter)
         if args.file is not None:
-            if args.file[-4:] == ".json":
+            if args.file[-5:] == ".json":
                 abs_ax_str = list(map(str, abs_ax))
                 with open(args.file, "w") as f:
                     json.dump({"num": len(abs_ax_str), "axioms": abs_ax_str}, f)
-            elif args.file[-3:] == ".pkl":
+            elif args.file[-4:] == ".pkl":
                 with open(args.file, "wb") as f:
                     pickle.dump(abs_ax)
         if args.consider_pos or args.tree_idx or not args.peek_pos:
@@ -439,5 +448,5 @@ if __name__ == "__main__":
                         print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][-1]}")
 
     # ex_sol = abs_sol[59]
-    # util.print_solution(ex_sol)
+    # abs_util.print_solution(ex_sol)
 
