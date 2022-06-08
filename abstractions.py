@@ -180,9 +180,13 @@ class AxSeqTreePos(Abstraction):
             self.ex_states = tuple(self.ex_states)
         self.freq = None
 
+        done_init = False
         if isinstance(arg, str):
-            if '~' not in arg and arg[-1] != ':':
-                arg = {"axioms": [arg], "info": ''}
+            if '~' not in arg:
+                self.axioms = (arg,)
+                self.rel_pos = ()
+                self.ex_steps = None
+                done_init = True
             else:
                 arg = abs_util.split_to_tree(arg, transform=lambda x, info=None: x if isinstance(x, str) else {"axioms": [elt if isinstance(elt, str) else AxSeqTreePos(elt) for elt in x], "info": info}, info_mark=':')
             """
@@ -198,29 +202,30 @@ class AxSeqTreePos(Abstraction):
                 self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
             """
 
-        if isinstance(arg, dict):
-            # "axioms": list of Abstraction objects or strings; "info": string containing rel. pos. info
-            self.axioms = tuple(arg["axioms"])
-            split_pos_str = arg["info"].split('~')
-            self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
-            self.ex_steps = None
+        if not done_init:
+            if isinstance(arg, dict):
+                # "axioms": list of Abstraction objects or strings; "info": string containing rel. pos. info
+                self.axioms = tuple(arg["axioms"])
+                split_pos_str = arg["info"].split('~')
+                self.rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
+                self.ex_steps = None
 
-        else:
-            self.ex_steps = arg
-            def get_axioms():
-                for step in arg:
-                    if len(step) == 1:
-                        yield step.name_str
-                    elif hasattr(step, "abstraction"):
-                        yield step.abstraction
-                    else:
-                        warnings.warn("Step object doesn't have abstraction attribute")
-                        ab = AxSeqTreePos(step.steps)
-                        step.abstraction = ab
-                        yield ab
-            self.axioms = tuple(get_axioms())
-            self.rel_pos = tuple(AxSeqTreePos.remove_prefix(arg[i].tail_idx, arg[i+1].head_idx)
-                                 for i in range(len(arg)-1))
+            else:
+                self.ex_steps = arg
+                def get_axioms():
+                    for step in arg:
+                        if len(step) == 1:
+                            yield step.name_str
+                        elif hasattr(step, "abstraction"):
+                            yield step.abstraction
+                        else:
+                            warnings.warn("Step object doesn't have abstraction attribute")
+                            ab = AxSeqTreePos(step.steps)
+                            step.abstraction = ab
+                            yield ab
+                self.axioms = tuple(get_axioms())
+                self.rel_pos = tuple(AxSeqTreePos.remove_prefix(arg[i].tail_idx, arg[i+1].head_idx)
+                                     for i in range(len(arg)-1))
 
         self.length = sum(1 if isinstance(ax, str) else len(ax) for ax in self.axioms)
         self.height = 1 + max((0 if isinstance(ax, str) else ax.height) for ax in self.axioms)
