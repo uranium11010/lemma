@@ -35,7 +35,7 @@ Issues: A->B common and B->C common doesn't imply that A->B->C is common; curren
   4. Save the top t abstractions (or set a threshold frequency for inclusion) into learned abstractions, creating a rewrite rule (sequence of axioms -> new abstract action).
   5. Rewrite solutions using these new abstractions, then repeat K times, each time adding t more abstractions.
 
-* `IAPHolistic`: Same as `IterAbsPairs`, but with two modifications.
+* `IAPHolistic`: Same as `IterAbsPairs`, but with three modifications.
   * Abstractions are not ranked by their frequencies, but by a "holistic score" defined by frequency * (abstraction depth + abstraction length)
     - *Note:* Since we create abstractions of abstractions while iterating the abstraction process, every abstraction is viewed as a tree. "Abstraction depth" refers to the height of this tree.
   * While iterating the abstraction process, in addition to considering abstractions of the form A1 + A2 where A1 and A2 are axioms or abstractions that we've previously discovered, we consider "flattened" versions of these abstractions, i.e., (axioms/abstractions that make up A1) + (axioms/abstractions that make up A2). This is to relax the constraint that all abstraction trees are binary trees.
@@ -47,7 +47,8 @@ All implementations use Python 3. There are no requirements additional to the Py
 
 Running the following command discovers abstractions from a data set of ConPoLe solutions:
 ```
-python compress.py [-h] [--file FILE] [--sol-file SOL_FILE] [--use NUM_USE] [--store NUM_STORE] [--num-ex-sol NUM_EX_SOL] [-s] [--iter ITER] [--thres THRES] [--top K] [--hol] [--tree] [--pos] [--peek] [-v]
+python compress.py [-h] [--file FILE] [--sol-file SOL_FILE] [--use NUM_USE] [--store NUM_STORE]
+	[--num-ex-sol NUM_EX_SOL] [-s] [--iter ITER] [--thres THRES] [--top K] [--hol] [--tree] [--pos] [--peek] [-v]
 ```
 * `--file`: Path to store the abstractions (should end in `.json` or `.pkl`)
 * `--sol-file`: Path to store the abstracted solutions (should end in `.pkl`)
