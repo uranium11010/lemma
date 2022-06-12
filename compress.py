@@ -366,6 +366,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", dest="test", action="store_true", help="Testing")
     parser.add_argument("--file", dest="file", type=str, help="File to store the abstractions")
     parser.add_argument("--sol-file", dest="sol_file", type=str, help="File to store the abstracted solutions")
+    parser.add_argument("--use", dest="num_use", type=int, default=None, help="How many solutions to use (default: all)")
+    parser.add_argument("--store", dest="num_store", type=int, default=None, help="How many abstracted solutions to store (default: all)")
     parser.add_argument("--num-ex-sol", dest="num_ex_sol", type=int, default=0, help="Number of example solutions to display")
     parser.add_argument("-s", dest="small", action="store_true", help="Whether to use small dataset")
     parser.add_argument("--iter", type=int, default=1, help="How many times to iterate pair abstraction process")
@@ -376,8 +378,6 @@ if __name__ == "__main__":
     parser.add_argument("--pos", dest="consider_pos", action="store_true", help="Consider relative positions of application")
     parser.add_argument("--peek", dest="peek_pos", action="store_true", help="Take peek at relative positions even when we don't consider them")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Display example axioms")
-    parser.add_argument("--use", dest="num_use", type=int, default=None, help="How many solutions to use (default: all)")
-    parser.add_argument("--store", dest="num_store", type=int, default=None, help="How many abstracted solutions to store (default: all)")
 
     args = parser.parse_args()
 
