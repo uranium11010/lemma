@@ -62,7 +62,7 @@ class Compress(object):
             new_ax = Abstraction.new(self.config, ax_subseq)
             if new_ax in abstractions:
                 new_states = solution.states[:i+1] + solution.states[i+abs_len:]
-                new_actions = solution.actions[:i] + [Step(ax_subseq)] + solution.actions[i+abs_len:]
+                new_actions = solution.actions[:i] + [Step(ax_subseq, solution.states[i:i+abs_len+1])] + solution.actions[i+abs_len:]
 
                 return Solution(new_states, new_actions)
 
@@ -279,10 +279,10 @@ class IterAbsPairs(Compress):
         sols = self.solutions
         axioms = self.axioms
         for _ in range(K-1):
-            abstractor = IterAbsPairs(sols, axioms, self.config)
+            abstractor = self.__class__(sols, axioms, self.config)
             sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
-        abstractor = IterAbsPairs(sols, axioms, self.config)
+        abstractor = self.__class__(sols, axioms, self.config)
         if get_new_sols:
             sols = abstractor.abstracted_sol(2)
             axioms = abstractor.new_axioms
@@ -300,65 +300,43 @@ class IAPHolistic(IterAbsPairs):
         frequencies = {}
         for i in range(len(self.solutions)):
             sol = self.solutions[i]
-            for j in range(len(sol.actions)):
-                abstracts = [], [] if len(sol.actions[j]) == 1 else [sol.actions[j].abstraction]
-                if j < len(sol.actions) - 1:
-                    abstract = Abstraction.new(self.config, sol.actions[j:j+2], sol.states[j:j+3])
-                    abstracts.append(abstract)
+            abstracts = []
+            for j in range(len(sol.actions)-1):
+                abstract = Abstraction.new(self.config, sol.actions[j:j+2], sol.states[j:j+3])
+                abstracts.append(abstract)
+                if len(sol.actions[j]) > 1 or len(sol.actions[j+1]) > 1:
                     abstract_flat = Abstraction.new(self.config, sol.actions[j].steps + sol.actions[j+1].steps, sol.actions[j].ex_states[:-1] + sol.actions[j+1].ex_states)
                     abstracts.append(abstract_flat)
 
-                scores = [len(abstract) + abstract.height for abstract in abstracts]
+            scores = [len(abstract) + abstract.height for abstract in abstracts]
 
-                if not self.peek_pos or self.consider_pos or self.tree_idx:
-                    for abstract, score in zip(abstracts, scores):
-                        if abstract in frequencies:
-                            frequencies[abstract] += score
-                        else:
-                            frequencies[abstract] = score
-                else:
-                    if len(sol.actions[j]) == 1:
-                        wp_abstracts = []
+            if not self.peek_pos or self.consider_pos or self.tree_idx:
+                for abstract, score in zip(abstracts, scores):
+                    if abstract in frequencies:
+                        frequencies[abstract] += score
                     else:
-                        wp_abstracts = [Abstraction.new(self.config | {"tree_idx": True}, sol.actions[j].steps, sol.actions[j].ex_states)]
-                    if j < len(sol.actions) - 1:
-                        wp_abs = Abstraction.new(self.config | {"tree_idx": True}, sol.actions[j:j+2], sol.states[j:j+3])
-                        wp_abstracts.append(wp_abs)
-                        wp_abs_flat = Abstraction.new(self.config | {"tree_idx": True}, sol.actions[j].steps + sol.actions[j+1].steps, sol.actions[j].ex_states[:-1] + sol.actions[j+1].ex_states)
-                        wp_abstracts.append(wp_abs_flat)
-                    for wp_abs, abstract, score in zip(wp_abstracts, abstracts, scores):
-                        with_pos, wp_ex_steps, wp_ex_states = wp_abs.rel_pos, wp_abs.ex_steps, wp_abs.ex_states
-                        if abstract in frequencies:
-                            frequencies[abstract][0] += score
-                            if with_pos in frequencies[abstract][1]:
-                                frequencies[abstract][1][with_pos] += score
-                            else:
-                                frequencies[abstract][1][with_pos] = score
-                                frequencies[abstract][2][with_pos] = wp_ex_steps
-                                frequencies[abstract][3][with_pos] = wp_ex_states
+                        frequencies[abstract] = score
+            else:
+                wp_abstracts = []
+                for j in range(len(sol.actions)-1):
+                    wp_abs = Abstraction.new(self.config | {"tree_idx": True}, sol.actions[j:j+2], sol.states[j:j+3])
+                    wp_abstracts.append(wp_abs)
+                    wp_abs_flat = Abstraction.new(self.config | {"tree_idx": True}, sol.actions[j].steps + sol.actions[j+1].steps, sol.actions[j].ex_states[:-1] + sol.actions[j+1].ex_states)
+                    wp_abstracts.append(wp_abs_flat)
+                for wp_abs, abstract, score in zip(wp_abstracts, abstracts, scores):
+                    with_pos, wp_ex_steps, wp_ex_states = wp_abs.rel_pos, wp_abs.ex_steps, wp_abs.ex_states
+                    if abstract in frequencies:
+                        frequencies[abstract][0] += score
+                        if with_pos in frequencies[abstract][1]:
+                            frequencies[abstract][1][with_pos] += score
                         else:
-                            frequencies[abstract] = [score, {with_pos: score}, {with_pos: wp_ex_steps}, {with_pos: wp_ex_states}]
+                            frequencies[abstract][1][with_pos] = score
+                            frequencies[abstract][2][with_pos] = wp_ex_steps
+                            frequencies[abstract][3][with_pos] = wp_ex_states
+                    else:
+                        frequencies[abstract] = [score, {with_pos: score}, {with_pos: wp_ex_steps}, {with_pos: wp_ex_states}]
         self.frequencies = frequencies
         return frequencies
-
-    def iter_abstract(self, K, get_new_sols=False):
-        """
-        Abstract common (cur, next) pairs iteratively K times
-        Total # of abstractions is constant throughout iterations (unlike IterAbsPairs where it grows linearly)
-        """
-        sols = self.solutions
-        axioms = self.axioms
-        for _ in range(K-1):
-            abstractor = IterAbsPairs(sols, axioms, self.config)
-            sols = abstractor.abstracted_sol(2)
-        abstractor = IterAbsPairs(sols, axioms, self.config)
-        if get_new_sols:
-            sols = abstractor.abstracted_sol(2)
-            axioms = abstractor.new_axioms
-            return sols, axioms
-        axioms = axioms + abstractor.abstract()
-        return axioms
-
 
 
 if __name__ == "__main__":
@@ -410,7 +388,7 @@ if __name__ == "__main__":
             if args.sol_file is not None:
                 with open(args.sol_file, "wb") as f:
                     pickle.dump(sols[:num_store], f)
-            else:
+            if args.num_ex_sol is not None:
                 for i, ex_sol in enumerate(random.sample(sols, args.num_ex_sol)):
                     print(f"EXAMPLE SOLUTION {i+1}")
                     print(ex_sol)
@@ -424,7 +402,7 @@ if __name__ == "__main__":
                     json.dump({"num": len(abs_ax_str), "axioms": abs_ax_str}, f)
             elif args.file[-4:] == ".pkl":
                 with open(args.file, "wb") as f:
-                    pickle.dump(abs_ax)
+                    pickle.dump(abs_ax, f)
         if args.consider_pos or args.tree_idx or not args.peek_pos:
             for i in range(len(axioms), len(abs_ax)):
                 print(f"{str(abs_ax[i])}\n\t{abs_ax[i].freq}")
