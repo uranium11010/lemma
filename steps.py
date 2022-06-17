@@ -170,7 +170,7 @@ class Step:
         self.head_idx = self.flat_steps[0].idx
         self.tail_idx = self.flat_steps[-1].idx
 
-        self.abstraction = abs_type(self.steps)
+        self.abstraction = abs_type(self.steps, ex_states)
 
     def __len__(self):
         return self.length
