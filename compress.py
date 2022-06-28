@@ -67,7 +67,7 @@ class Compress(object):
                 return Solution(new_states, new_actions)
 
     
-    def abstracted_sol(self, max_len, abstractions=None):
+    def abstracted_sol(self, max_len, abstractions=None, num_new_sols=None):
         """
         Get abstracted solutions from set of abstractions
         Format: same as self.solutions
@@ -80,7 +80,7 @@ class Compress(object):
         abs_set = set(abstractions)
         self.new_axiom_set |= abs_set
 
-        new_sols = self.solutions.copy()
+        new_sols = self.solutions.copy() if num_new_sols is None else self.solutions[:num_new_sols]
         for abs_len in range(max_len, 1, -1):
             for i in range(len(new_sols)):
                 # print("BEGIN", new_sol[1])
@@ -243,7 +243,7 @@ class IterAbsPairs(Compress):
             thres = self.num_ax**(-0.75) if self.top is None else 0 # -0.75 is just an arbitrary exponent that's intuitive
         else:
             thres = self.thres
-        thres = int(np.ceil(len(solutions) * thres))
+        thres = int(np.ceil(len(self.solutions) * thres))
 
         frequencies = self.get_frequencies()
         pairs = []
@@ -260,19 +260,19 @@ class IterAbsPairs(Compress):
         top_abs = []
         if self.peek_pos:
             for freq, pair, rel_pos_freq, rel_pos_ex_steps, rel_pos_ex_states in top_pairs:
-                pair.freq = freq / len(solutions)
-                pair.rel_pos_freq = {rel_pos: pfreq / len(solutions) for rel_pos, pfreq in rel_pos_freq.items()}
+                pair.freq = freq / len(self.solutions)
+                pair.rel_pos_freq = {rel_pos: pfreq / len(self.solutions) for rel_pos, pfreq in rel_pos_freq.items()}
                 pair.rel_pos_ex_steps = rel_pos_ex_steps
                 pair.rel_pos_ex_states = rel_pos_ex_states
                 top_abs.append(pair)
         else:
             for freq, pair in top_pairs:
-                pair.freq = freq / len(solutions)
+                pair.freq = freq / len(self.solutions)
                 top_abs.append(pair)
         return top_abs
 
 
-    def iter_abstract(self, K, get_new_sols=False):
+    def iter_abstract(self, K, get_new_sols=False, num_new_sols=None):
         """
         Abstract common (cur, next) pairs iteratively K times
         """
@@ -284,7 +284,7 @@ class IterAbsPairs(Compress):
             axioms = abstractor.new_axioms
         abstractor = self.__class__(sols, axioms, self.config)
         if get_new_sols:
-            sols = abstractor.abstracted_sol(2)
+            sols = abstractor.abstracted_sol(2, num_new_sols=num_new_sols)
             axioms = abstractor.new_axioms
             return sols, axioms
         axioms = axioms + abstractor.abstract()
@@ -342,6 +342,8 @@ class IAPHolistic(IterAbsPairs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find mathematical absractions.")
     parser.add_argument("-t", dest="test", action="store_true", help="Testing")
+    parser.add_argument("--config", dest="config_file", type=str, help="Configuration file (can override other options)")
+    parser.add_argument("--sol-data", type=str, help="Path to data of solutions from which abstractions are found")
     parser.add_argument("--file", dest="file", type=str, help="File to store the abstractions")
     parser.add_argument("--sol-file", dest="sol_file", type=str, help="File to store the abstracted solutions")
     parser.add_argument("--use", dest="num_use", type=int, default=None, help="How many solutions to use (default: all)")
@@ -358,6 +360,9 @@ if __name__ == "__main__":
     parser.add_argument("-v", dest="verbose", action="store_true", help="Display example axioms")
 
     args = parser.parse_args()
+    if args.config_file is not None:
+        with open(args.config_file, 'r') as f:
+            args.__dict__.update(json.load(f))
 
     if args.small:
         num_use = args.num_use or 8000
@@ -366,13 +371,19 @@ if __name__ == "__main__":
         num_use = args.num_use or 80000
         num_store = args.num_store or 80000
 
-    if args.tree_idx:
-        solutions = abs_util.load_solutions("equations-80k-relative.json")
-    else:
-        if args.small:
-            solutions = abs_util.load_solutions("equations-8k.json")
+    if args.sol_data is None:
+        if args.tree_idx:
+            solutions = abs_util.load_solutions("equations-80k-relative.json")
         else:
-            solutions = abs_util.load_solutions("equations-80k.json")
+            if args.small:
+                solutions = abs_util.load_solutions("equations-8k.json")
+            else:
+                solutions = abs_util.load_solutions("equations-80k.json")
+    elif isinstance(args.sol_data, str):
+        with open(args.sol_data, 'r') as f:
+            solutions = abs_util.load_solutions(args.sol_data)
+    else:
+        solutions = args.sol_data
     _, axioms = abs_util.load_axioms("equation_axioms.json")
 
     if args.test:
@@ -384,10 +395,10 @@ if __name__ == "__main__":
         else:
             compressor = IterAbsPairs(solutions, axioms, vars(args))
         if args.sol_file is not None or args.num_ex_sol:
-            sols, abs_ax = compressor.iter_abstract(args.iter, True)
+            sols, abs_ax = compressor.iter_abstract(args.iter, True, num_store)
             if args.sol_file is not None:
                 with open(args.sol_file, "wb") as f:
-                    pickle.dump(sols[:num_store], f)
+                    pickle.dump(sols, f)
             if args.num_ex_sol is not None:
                 for i, ex_sol in enumerate(random.sample(sols, args.num_ex_sol)):
                     print(f"EXAMPLE SOLUTION {i+1}")

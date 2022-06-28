@@ -16,10 +16,10 @@ import doctest
 class Abstraction:
     @staticmethod
     def new(config, arg, ex_states=None):
-        if config.get("tree_idx", False):
-            return AxSeqTreePos(arg, ex_states)
         if config.get("consider_pos", False):
             return AxSeqRelPos(arg, ex_states)
+        if config.get("tree_idx", True):
+            return AxSeqTreePos(arg, ex_states)
         return AxiomSeq(arg, ex_states)
 
     def has_instance(self, steps):
