@@ -1,0 +1,8 @@
+{
+    "abs_type": "tree_rel_pos",
+    "compressor": "iap_ent",
+    "max_abs_len": 3,
+    "file": "abstractions/iap_ent_tree_rel_pos.json",
+    "num_use": 1000,
+    "num_store": 200
+}

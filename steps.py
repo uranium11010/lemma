@@ -7,162 +7,137 @@ import numpy as np
 import warnings
 import argparse
 
-from abstractions import *
 import abs_util
+from abstractions import Axiom, Abstraction, AxSeqTreeRelPos
 
 import doctest
 
+class Step:
+    """
+    Single action; can consist of one or more axioms
+    Subclasses: AxStep and AbsStep
+    """
+    @staticmethod
+    def from_string(step_str, ex_states=None):
+        if '~' in step_str:
+            return AbsStep.from_string(step_str, ex_states)
+        return AxStep.from_string(step_str, ex_states)
 
-class AxStep:
+    @staticmethod
+    def from_name_idx_param(name, idx, param, ex_states=None, force_abs_step=False):
+        if not isinstance(name, tuple):
+            if force_abs_step:
+                raise
+            assert not isinstance(idx, tuple) and not isinstance(param, tuple)
+            return AxStep(name, idx, param)
+        assert isinstance(idx, tuple) and isinstance(param, tuple) and len(name) == len(idx) == len(param) > 1
+        return AbsStep(tuple(Step.from_name_idx_param(name[i], idx[i], param[i]) for i in range(len(name))),
+                       ex_states=ex_states, name=name, idx=idx, param=param)
+
+
+class AxStep(Step):
     """
     Single-axiom action
 
-    >>> AxStep("comm 3, (x + 2)").param
+    >>> Step.from_string("comm 3, (x + 2)").param
     '(x + 2)'
-    >>> print(AxStep("refl").idx)
+    >>> print(Step.from_string("refl").idx)
     None
-    >>> str(AxStep("sub 1"))
+    >>> str(Step.from_string("sub 1"))
     'sub 1'
-    >>> str(AxStep({"name": "comm", "idx": 3, "param": "(x + 2)"}))
+    >>> str(AxStep("comm", 3, "(x + 2)"))
     'comm 3, (x + 2)'
     """
 
-    def __init__(self, arg):
-        if isinstance(arg, str):
-            self.ax_str = arg
+    def __init__(self, name, idx=None, param=None, ex_states=None):
+        self.ex_states = ex_states if ex_states is None else tuple(ex_states)
 
-            i = self.ax_str.find(' ')
-            if i == -1:
-                self.name = self.ax_str
-                self.idx = None
-                self.param = None
-            else:
-                self.name = self.ax_str[:i]
-                j = self.ax_str.find(',')
-                if j == -1:
-                    self.idx = None
-                    self.param = self.ax_str[i+1:]
-                else:
-                    self.idx = self.ax_str[i+1:j]
-                    self.param = self.ax_str[j+2:]
-                
-        elif isinstance(arg, dict):
-            self.name = arg["name"]
-            self.idx = arg.get("idx")
-            self.param = arg.get("param")
+        self.name = name
+        self.idx = idx
+        self.param = param
 
-        else:
-            raise TypeError("Wrong arguments to AxStep")
-
-        self.head_idx = self.idx
-        self.tail_idx = self.idx
+        self.head_idx = self.tail_idx = self.idx
 
         self.name_str = self.name
         self.idx_str = '$' if self.idx is None else str(self.idx)
         self.param_str = '$' if self.param is None else self.param
+        self.step_str = None
+
+        self.axiom = Axiom(self.name)
+
+    @property
+    def rule(self):
+        return self.axiom
+
+    @staticmethod
+    def from_string(step_str, ex_states=None):
+        i = step_str.find(' ')
+        if i == -1:
+            ax_step = AxStep(step_str, ex_states=ex_states)
+        else:
+            name = step_str[:i]
+            j = step_str.find(',')
+            if j == -1:
+                ax_step = AxStep(name, param=step_str[i+1:], ex_states=ex_states)
+            else:
+                ax_step = AxStep(name, idx=step_str[i+1:j], param=step_str[j+2:], ex_states=ex_states)
+        ax_step.step_str = step_str
+        return ax_step
 
     def __len__(self):
         return 1
 
     def __str__(self):
-        try:
-            return self.ax_str
-        except AttributeError:
-            if self.param is None:
-                self.ax_str = self.name
-            elif self.idx is None:
-                self.ax_str = f"{self.name} {self.param}"
-            else:
-                self.ax_str = f"{self.name} {self.idx}, {self.param}"
-            return self.ax_str
+        if self.step_str is not None:
+            return self.step_str
+        if self.param is None:
+            self.step_str = self.name
+        elif self.idx is None:
+            self.step_str = f"{self.name} {self.param}"
+        else:
+            self.step_str = f"{self.name} {self.idx}, {self.param}"
+        return self.step_str
 
     def __repr__(self):
         return f"AxStep(\"{str(self)}\")"
 
 
-class Step:
+class AbsStep(Step):
     """
-    Tuple of AxStep and Step objects
+    Tuple of Step objects
 
-    >>> step = Step([AxStep({"name": "sub", "param": "y"}), Step("refl~comm $~1, $~2x")])
+    >>> step = AbsStep([AxStep("sub", param="y"), Step.from_string("refl~comm $~1, $~2x")])
     >>> step
-    Step("sub~{refl~comm} $~{$~1}, y~{$~2x}")
+    AbsStep("sub~{refl~comm} $~{$~1}, y~{$~2x}")
     >>> step.idx[1]
     (None, '1')
     >>> step.tail_idx
     '1'
     >>> step.flat_steps
     (AxStep("sub y"), AxStep("refl"), AxStep("comm 1, 2x"))
-    >>> step2 = Step("sub~{refl~comm} $~{$~1}, y~{$~2x}")
+    >>> step2 = Step.from_string("sub~{refl~comm} $~{$~1}, y~{$~2x}")
     >>> step.idx
     (None, (None, '1'))
     >>> step2
-    Step("sub~{refl~comm} $~{$~1}, y~{$~2x}")
+    AbsStep("sub~{refl~comm} $~{$~1}, y~{$~2x}")
     >>> step2.steps
-    (AxStep("sub y"), Step("refl~comm $~1, $~2x"))
+    (AxStep("sub y"), AbsStep("refl~comm $~1, $~2x"))
     >>> len(step2)
     3
     """
 
-    def __init__(self, arg, ex_states=None, abs_type=AxSeqTreePos):
-        self.ex_states = ex_states
-        if hasattr(self.ex_states, "__iter__"):
-            self.ex_states = tuple(self.ex_states)
+    def __init__(self, steps, ex_states=None, AbsType=AxSeqTreeRelPos, name=None, idx=None, param=None):
+        assert isinstance(steps, (list, tuple))
+        assert len(steps) > 1
+        assert all(isinstance(step, Step) for step in steps)
 
-        if isinstance(arg, str):
-            if ',' not in arg:
-                ax_repr = AxStep(arg)
+        self.steps = tuple(steps)
+        self.ex_states = ex_states if ex_states is None else tuple(ex_states)
 
-                self.name_str = ax_repr.name_str
-                self.idx_str = ax_repr.idx_str
-                self.param_str = ax_repr.param_str
-            
-            else:
-                i = arg.find(' ')
-                j = arg.find(',')
-                self.name_str = arg[:i]
-                self.idx_str = arg[i+1:j]
-                self.param_str = arg[j+2:]
-
-            def transform(x):
-                if isinstance(x, str):
-                    return None if x == '$' else x
-                else:
-                    return tuple(x)
-            self.name = abs_util.split_to_tree(self.name_str, transform=transform)
-            self.idx = abs_util.split_to_tree(self.idx_str, transform=transform)
-            self.param = abs_util.split_to_tree(self.param_str, transform=transform)
-
-            def get_step(name, idx, param):
-                if not isinstance(name, tuple):
-                    assert not isinstance(idx, tuple) and not isinstance(param, tuple)
-                    return AxStep({"name": name, "idx": idx, "param": param})
-                if isinstance(name, tuple):
-                    assert isinstance(idx, tuple) and isinstance(param, tuple) and len(name) == len(idx) == len(param)
-                    return Step([get_step(name[i], idx[i], param[i]) for i in range(len(name))])
-                    
-            self.steps = tuple(get_step(name, idx, param) for name, idx, param in zip(self.name, self.idx, self.param))
-
-        elif hasattr(arg, "__iter__"):
-            self.steps = tuple(arg)
-            assert all(isinstance(step, (AxStep, Step)) for step in self.steps)
-
-            def wrap_brkt(string, step):
-                if len(step) > 1:
-                    return '{' + string + '}'
-                return string
-
-            self.name = tuple(step.name for step in self.steps)
-            self.name_str = '~'.join(wrap_brkt(step.name_str, step) for step in self.steps)
-
-            self.idx = tuple(step.idx for step in self.steps)
-            self.idx_str = '~'.join(wrap_brkt(step.idx_str, step) for step in self.steps)
-
-            self.param = tuple(step.param for step in self.steps)
-            self.param_str = '~'.join(wrap_brkt(step.param_str, step) for step in self.steps)
-
-        else:
-            raise TypeError("Arguments to Step must be list, tuple, str, or dict")
+        self.name = tuple(step.name for step in self.steps) if name is None else name
+        self.idx = tuple(step.idx for step in self.steps) if idx is None else idx
+        self.param = tuple(step.param for step in self.steps) if param is None else param
+        self.strings_dict = {"name_str": None, "idx_str": None, "param_str": None}
 
         self.length = sum(len(step) for step in self.steps)
         self.flat_steps = sum(((step,) if isinstance(step, AxStep) else step.flat_steps for step in self.steps), ())
@@ -170,20 +145,81 @@ class Step:
         self.head_idx = self.flat_steps[0].idx
         self.tail_idx = self.flat_steps[-1].idx
 
-        self.abstraction = abs_type(self.steps, ex_states)
+        self.abstraction = AbsType.from_steps(steps, self, ex_states)
+
+    @property
+    def rule(self):
+        return self.abstraction
+
+    @staticmethod
+    def from_string(step_str, ex_states=None):
+        i = step_str.index(' ')
+        j = step_str.index(',')
+        name_str = step_str[:i]
+        idx_str = step_str[i+1:j]
+        param_str = step_str[j+2:]
+
+        def transform(x):
+            if isinstance(x, str):
+                return None if x == '$' else x
+            return tuple(x)
+        name = abs_util.split_to_tree(name_str, transform=transform)
+        idx = abs_util.split_to_tree(idx_str, transform=transform)
+        param = abs_util.split_to_tree(param_str, transform=transform)
+
+        abs_step = Step.from_name_idx_param(name, idx, param, ex_states=ex_states, force_abs_step=True)
+        abs_step.strings_dict = {"name_str": name_str, "idx_str": idx_str, "param_str": param_str}
+
+        return abs_step
+
+    @staticmethod
+    def from_abs(ax_steps, abstraction, ex_states=None):
+        assert all(isinstance(step, AxStep) for step in ax_steps)
+        assert isinstance(abstraction, Abstraction)
+        assert len(ax_steps) == len(abstraction)
+        # get indices for delimiting AxStep objects
+        sub_abs_pos = [0]
+        for sub_abs in abstraction.rules:
+            sub_abs_pos.append(sub_abs_pos[-1] + (1 if isinstance(sub_abs, str) else len(sub_abs)))
+        # create AbsStep or AxStep objects
+        steps = tuple(AbsStep.from_abs(ax_steps[sub_abs_pos[i]:sub_abs_pos[i+1]], abstraction=abstraction.rules[i])
+                      if isinstance(abstraction.rules[i], Abstraction)
+                      else ax_steps[sub_abs_pos[i]]
+                      for i in range(len(abstraction.rules)))
+        return AbsStep(steps, ex_states)
 
     def __len__(self):
         return self.length
 
+    @staticmethod
+    def wrap_brkt(string, step):
+        if isinstance(step, AbsStep):
+            return '{' + string + '}'
+        return string
+
+    @property
+    def name_str(self):
+        if self.strings_dict["name_str"] is None:
+            self.strings_dict["name_str"] = '~'.join(AbsStep.wrap_brkt(step.name_str, step) for step in self.steps)
+        return self.strings_dict["name_str"]
+
+    @property
+    def idx_str(self):
+        if self.strings_dict["idx_str"] is None:
+            self.strings_dict["idx_str"] = '~'.join(AbsStep.wrap_brkt(step.idx_str, step) for step in self.steps)
+        return self.strings_dict["idx_str"]
+
+    @property
+    def param_str(self):
+        if self.strings_dict["param_str"] is None:
+            self.strings_dict["param_str"] = '~'.join(AbsStep.wrap_brkt(step.param_str, step) for step in self.steps)
+        return self.strings_dict["param_str"]
+
     def __str__(self):
-        try:
-            return self.step_str
-        except AttributeError:
-            self.step_str = f"{self.name_str} {self.idx_str}, {self.param_str}"
-            return self.step_str
+        return f"{self.name_str} {self.idx_str}, {self.param_str}"
 
     def __repr__(self):
-        return f"Step(\"{str(self)}\")"
+        return f"AbsStep(\"{str(self)}\")"
 
     def __iter__(self):
         """
@@ -203,53 +239,59 @@ class Solution:
     """
     Solution stored as tuple of states (strings) and tuple of Step objects
 
-    >>> sol = Solution({"problem": "2x = 3", "solution": [{"state": "2x = 3", "action": "assumption"}, {"state": "((x * 2) / 2) = (3 / 2)", "action": "div~assoc $~1, 2~2x * 1"}]})
+    >>> sol = Solution.from_dict({"problem": "2x = 3", "solution": [{"state": "2x = 3", "action": "assumption"},
+    ... {"state": "((x * 2) / 2) = (3 / 2)", "action": "div~comm $~2, 2~2x"}]})
     >>> sol.states
     ['2x = 3', '((x * 2) / 2) = (3 / 2)']
     >>> sol.actions[0].steps[1].param
-    '2x * 1'
+    '2x'
     >>> sol.actions[0].steps
-    (AxStep("div 2"), AxStep("assoc 1, 2x * 1"))
+    (AxStep("div 2"), AxStep("comm 2, 2x"))
+    >>> sol2 = Solution(["2x = 3", "((2x) / 2) = (3 / 2)", "((x * 2) / 2) = (3 / 2)", "(x * (2 / 2)) = (3 / 2)"],
+    ... [Step.from_string("div 2"), Step.from_string("comm 0.0.0, 2x"), Step.from_string("assoc 0.0, (x * 2) / 2")])
+    >>> print(sol2.display_compressed(abs_ax=AxSeqTreeRelPos.from_string("div~{comm~assoc:0_}:$_0.0.0")))
+    div~{comm~assoc} $~{0.0.0~0.0}, 2~{2x~(x * 2) / 2}
     """
 
-    def __init__(self, *args):
-        if len(args) == 1:
-            """
-            solution: {"problem": <str>, "solution": [{"state": <str>, "action": <str>}, ...]}
-            """
-            solution = args[0]["solution"]
-            # list of string of states
-            self.states = [step["state"] for step in solution]
-            # list of Step objects (tuple of AxStep/Step objects)
-            self.actions = [Step(solution[i]["action"], ex_states=self.states[i-1:i+1])
-                                for i in range(1, len(solution))]
+    def __init__(self, states, actions):
+        assert isinstance(states, (list, tuple)) and isinstance(actions, (list, tuple))
+        assert all(isinstance(step, Step) for step in actions)
+        assert len(states) == len(actions) + 1
+        self.states = list(states)
+        self.actions = list(actions)
 
-        elif len(args) == 2:
-            states, actions = args
-            self.states = list(states)
-            self.actions = list(actions)
+    @staticmethod
+    def from_dict(solution):
+        """
+        solution: {"problem": <str>, "solution": [{"state": <str>, "action": <str>}, ...]}
+        """
+        solution = solution["solution"]
+        # list of string of states
+        states = [step["state"] for step in solution]
+        # list of Step objects (tuple of AxStep/Step objects)
+        actions = [Step.from_string(solution[i]["action"], ex_states=states[i-1:i+1])
+                   for i in range(1, len(solution))]
+        return Solution(states, actions)
 
-        else:
-            raise TypeError("Wrong number of arguments to Solution")
 
-    def display_compressed(self):
+    def display_compressed(self, abs_ax=None):
         """
         Outputs compressed string with axioms and params (no states)
-        Equivalent to string of corresponding Step/AxStep object
+        Equivalent to string of corresponding AbsStep/AxStep object
+        If `abs_ax` is given, the entire Solution object is taken to be
+        an instance of that Rule and self.actions must be AxStep objects
         """
         if len(self.actions) == 1:
             step = self.actions[0]
-            while isinstance(step, Step):
-                step = step.steps[0]
+            assert abs_ax is None or (isinstance(step, AxStep) and isinstance(abs_ax, Axiom)) 
             return str(step)
-        return str(Step(self.actions))
+        return str(AbsStep.from_abs(self.actions, abs_ax))
 
     def __str__(self):
         return '\n'.join(self.states[i] + '\n\t' + str(self.actions[i]) for i in range(len(self.actions))) + '\n' + self.states[-1]
 
     def __repr__(self):
-        return str(self)
-
+        return "Solution(" + ', '.join(repr(self.states[i]) + ', ' + repr(self.actions[i]) for i in range(len(self.actions))) + ', ' + repr(self.states[-1]) + ")"
 
 
 if __name__ == "__main__":

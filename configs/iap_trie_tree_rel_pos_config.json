@@ -1,0 +1,9 @@
+{
+    "abs_type": "tree_rel_pos",
+    "compressor": "iap_trie",
+    "top": 8,
+    "file": "abstractions/iap_trie_tree_rel_pos.json",
+    "sol_file": "abs_sols/iap_trie_tree_rel_pos_sol.pkl",
+    "num_use": 80000,
+    "num_store": 200
+}
