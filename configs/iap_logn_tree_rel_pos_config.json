@@ -1,0 +1,10 @@
+{
+    "abs_type": "tree_rel_pos",
+    "compressor": "iap_logn",
+    "max_abs_len": null,
+    "only_flat": true,
+    "iter": 100,
+    "file": "abstractions/iap_logn_tree_rel_pos_any_8k.json",
+    "num_use": 8000,
+    "num_store": 200
+}
