@@ -2,14 +2,9 @@
 Classes for types of abstractions
 """
 
-import json
-import numpy as np
-import warnings
-import argparse
-
+import doctest
 import abs_util
 
-import doctest
 
 class Rule:
     @staticmethod
@@ -19,13 +14,7 @@ class Rule:
             return Axiom(rule_str)
         else:
             assert abs_type is not None
-            if abs_type == "tree_rel_pos":
-                return AxSeqTreeRelPos.from_string(rule_str)
-            if abs_type == "dfs_idx_rel_pos":
-                return AxSeqDfsIdxRelPos.from_string(rule_str)
-            if abs_type == "ax_seq":
-                return AxiomSeq.from_string(rule_str)
-            raise Exception("Invalid abstraction type")
+            return ABS_TYPES[abs_type]
 
 
 class Axiom(Rule):
@@ -62,14 +51,45 @@ class Abstraction(Rule):
         self.length = sum(len(rule) for rule in self.rules)
         self.height = 1 + max(rule.height for rule in self.rules)
 
+        self.name_str = None
         self.freq = None
         self.score = None
 
-    def has_instance(self, steps):
+    @staticmethod
+    def from_string(abs_str, ex_step=None, ex_states=None):
+        raise NotImplementedError()
+
+    @staticmethod
+    def from_steps(steps, ex_step=None, ex_states=None):
+        raise NotImplementedError()
+
+    @staticmethod
+    def from_abs_elt(abs_elts, ex_step=None, ex_states=None):
+        raise NotImplementedError()
+
+    @staticmethod
+    def from_shifted_abs_elt(abs_elts, ex_step=None, ex_states=None):
+        raise NotImplementedError()
+
+    @staticmethod
+    def get_abs_elt(next_step, cur_steps):
         """
-        Checks whether abstraction has `steps` as instance
+        Gets abstraction element corresponding to `next_step`, given `cur_steps`
         """
         raise NotImplementedError()
+
+    def has_instance(self, steps):
+        """
+        NOT USED
+
+        >>> from steps import *; from abstractions import *
+        >>> abstraction = AxSeqTreeRelPos.from_steps([Step.from_string("eval 0.1, 2/2"), Step.from_string("comm~assoc 0.0.0~0.0, 3x~(x * 3) / 3")])
+        >>> abstraction.has_instance((Step.from_string("eval 0.0.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.1, 1y"), AxStep.from_string("assoc 0.1.1, (x * 3) / 3")])))
+        False
+        >>> abstraction.has_instance((Step.from_string("eval 0.1.1.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.0.0, 1y"), AxStep.from_string("assoc 0.1.1.0, (y * 1) / 1")])))
+        True
+        """
+        return self == self.__class__.from_steps(steps)
 
     def within(self, steps):
         """
@@ -79,25 +99,26 @@ class Abstraction(Rule):
         num_ax = len(self.rules)
         return any(self.has_instance(steps[i:i+num_ax]) for i in range(len(steps)-num_ax+1))
 
-    @staticmethod
-    def get_abs_elt(next_step, cur_steps):
-        """
-        Gets abstraction element corresponding to `next_step`, given `cur_steps`
-        """
-        raise NotImplementedError()
-
     def __iter__(self):
         """
         Allows iteration through the constituents of the abstraction
         """
         raise NotImplementedError()
 
+    def __str__(self):
+        raise NotImplementedError()
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}("{str(self)}")'
+
+    def __eq__(self, other):
+        raise NotImplementedError()
+
+    def __hash__(self):
+        raise NotImplementedError()
+
     def __len__(self):
         return self.length
-
-    def __lt__(self, other):
-        # to make sorting work when getting top-frequency abstractions
-        return False
 
 
 class AxiomSeq(Abstraction):
@@ -105,45 +126,58 @@ class AxiomSeq(Abstraction):
     Abstraction: sequence of rules
 
     >>> from steps import *; from abstractions import *
-    >>> AxiomSeq([Step.from_string("refl"), AbsStep([Step.from_string("sub~comm $~3, 1~3x"), Step.from_string("comm 2, 2x")])]).rules
-    ('refl', 'sub~comm~comm')
+    >>> AxiomSeq.from_steps([Step.from_string("refl"), AbsStep((Step.from_string("sub 1"), Step.from_string("comm 0.0.1, 3x")), AxiomSeq), Step.from_string("comm 0.1, 2x")]).rules
+    (Axiom("refl"), AxiomSeq("sub~comm"), Axiom("comm"))
+    >>> AxiomSeq.from_string("assoc~eval").rules
+    (Axiom("assoc"), Axiom("eval"))
+    >>> print(AxiomSeq.from_string("{{sub~{assoc~eval}}~eval}~{comm~{{div~{assoc~eval}}~{mul1~eval}}}").rules[0].rules)
+    (AxiomSeq("sub~{assoc~eval}"), Axiom("eval"))
     """
 
-    def __init__(self, args, ex_states=None):
-        """
-        Builds abstraction from list of Step objects or list of rules
-        """
-        if all(isinstance(step, Step) for step in args):
-            self.ex_steps = args
-            self.ex_states = ex_states
-            self.rules = tuple(step.name_str for step in args)
-        elif all(isinstance(step_name, str) for step_name in args):
-            self.rules = tuple(args)
-        self.freq = None
-        self.rel_pos_freq = None
-        self.rel_pos_ex_steps = None
+    @staticmethod
+    def from_string(abs_str, ex_step=None, ex_states=None):
+        def transform(component):
+            if isinstance(component, str):
+                return Axiom(component)
+            return AxiomSeq(component)
+        abstraction = abs_util.split_to_tree(abs_str, transform=transform)
+        abstraction.ex_step = ex_step
+        abstraction.ex_states = ex_states
+        return abstraction
 
-    def has_instance(self, steps):
-        """
-        >>> from steps import Step, AbsStep
-        >>> seq = AxiomSeq([Step.from_string("refl"), Step.from_string("sub~comm $~3, 1~3x")])
-        >>> seq.within((Step.from_string("refl~refl $~$, $~$"), Step.from_string("refl"), AbsStep([Step.from_string("sub 1"), Step.from_string("comm 6, 1y")])))
-        True
-        """
-        return all(axiom == step.name_str for axiom, step in zip(self.rules, steps))
+    @staticmethod
+    def from_steps(steps, ex_step=None, ex_states=None):
+        rules = tuple(step.rule for step in steps)
+        abstraction = AxiomSeq(rules, ex_step, ex_states)
+        abstraction.ex_steps = steps
+        return abstraction
+
+    @staticmethod
+    def from_abs_elt(abs_elts, ex_step=None, ex_states=None):
+        return AxiomSeq(tuple(abs_elts), ex_step, ex_states)
+
+    @staticmethod
+    def from_shifted_abs_elt(abs_elts, ex_step=None, ex_states=None):
+        return AxiomSeq(tuple(abs_elts), ex_step, ex_states)
+
+    @staticmethod
+    def get_abs_elt(next_step, cur_steps):
+        return next_step.rule
+
+    def __iter__(self):
+        yield from self.rules
 
     def __str__(self):
-        try:
-            return self.name_str
-        except AttributeError:
-            self.name_str = '~'.join(self.rules)
-            return self.name_str
-
-    def __repr__(self):
-        return f"AxiomSeq{self.rules}"
+        if self.name_str is None:
+            def get_name_str(rule):
+                if isinstance(rule, Axiom):
+                    return rule.name
+                return '{' + str(rule) + '}'
+            self.name_str = '~'.join(map(get_name_str, self.rules))
+        return self.name_str
 
     def __eq__(self, other):
-        return self.rules == other.rules
+        return isinstance(other, AxiomSeq) and self.rules == other.rules
 
     def __hash__(self):
         return hash(self.rules)
@@ -221,6 +255,7 @@ class AxSeqTreeRelPos(Abstraction):
     def __init__(self, rules, rel_pos, ex_step=None, ex_states=None):
         super().__init__(rules, ex_step, ex_states)
         self.rel_pos = rel_pos
+        self.pos_str = None
         
     @staticmethod
     def from_string(abs_str, ex_step=None, ex_states=None):
@@ -284,19 +319,6 @@ class AxSeqTreeRelPos(Abstraction):
             i += 2  # specifically for bit string including periods separating indicees
         return idx1[i:], idx2[i:]
 
-    def has_instance(self, steps):
-        """
-        NOT USED
-
-        >>> from steps import *; from abstractions import *
-        >>> abstraction = AxSeqTreeRelPos.from_steps([Step.from_string("eval 0.1, 2/2"), Step.from_string("comm~assoc 0.0.0~0.0, 3x~(x * 3) / 3")])
-        >>> abstraction.has_instance((Step.from_string("eval 0.0.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.1, 1y"), AxStep.from_string("assoc 0.1.1, (x * 3) / 3")])))
-        False
-        >>> abstraction.has_instance((Step.from_string("eval 0.1.1.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.0.0, 1y"), AxStep.from_string("assoc 0.1.1.0, (y * 1) / 1")])))
-        True
-        """
-        return self == AxSeqTreeRelPos.from_steps(steps)
-
     @staticmethod
     def get_abs_elt(next_step, cur_steps):
         """
@@ -335,15 +357,15 @@ class AxSeqTreeRelPos(Abstraction):
             else:
                 assert isinstance(self.rules[i], AxSeqTreeRelPos)
                 yield from self.rules[i].__iter__(self.rel_pos[i-1])
-                
+
     def __str__(self):
-        if not hasattr(self, "name_str"):
+        if self.name_str is None:
             def get_name_str(rule):
                 if isinstance(rule, Axiom):
                     return rule.name
                 return '{' + str(rule) + '}'
             self.name_str = '~'.join(map(get_name_str, self.rules))
-        if not hasattr(self, "pos_str"):
+        if self.pos_str is None:
             def get_pos_str(pos):
                 str1 = '$' if pos[0] is None else pos[0]
                 str2 = '$' if pos[1] is None else pos[1]
@@ -351,14 +373,14 @@ class AxSeqTreeRelPos(Abstraction):
             self.pos_str = '~'.join(map(get_pos_str, self.rel_pos))
         return f"{self.name_str}:{self.pos_str}"
 
-    def __repr__(self):
-        return f'AxSeqTreeRelPos("{str(self)}")'
-
     def __eq__(self, other):
         return isinstance(other, AxSeqTreeRelPos) and self.rules == other.rules and self.rel_pos == other.rel_pos
 
     def __hash__(self):
         return hash(self.rules) ^ hash(self.rel_pos)
+
+
+ABS_TYPES = {"tree_rel_pos": AxSeqTreeRelPos, "dfs_idx_rel_pos": AxSeqDfsIdxRelPos, "ax_seq": AxiomSeq}
 
 
 if __name__ == "__main__":

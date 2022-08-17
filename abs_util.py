@@ -3,10 +3,10 @@ Provides tools for dealing with ConPoLe solutions
 """
 
 import json
-import numpy as np
-import matplotlib.pyplot as plt
 import warnings
 import doctest
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def load_solutions(f_name):
