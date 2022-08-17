@@ -17,7 +17,7 @@ from datetime import datetime
 import doctest
 
 from steps import Step, AbsStep, Solution
-from abstractions import Abstraction, ABS_TYPES
+from abstractions import Axiom, Abstraction, ABS_TYPES
 import abs_util
 
 
@@ -30,8 +30,9 @@ class Compress:
     def __init__(self, solutions, axioms, config):
         self.solutions = solutions
 
+        self.AbsType = ABS_TYPES[config["abs_type"]]
         self.num_ax = len(axioms)  # num of axioms
-        self.axioms = axioms  # list of (names of) axioms
+        self.axioms = axioms  # list of Rule objects (Axiom objects during first cycle)
         self.axiom_index = {self.axioms[k]: k for k in range(self.num_ax)}  # dictionary mapping axiom names to their indices (as in the list self.axioms)
         self.abstractions = None
         self.new_axioms = self.axioms.copy()  # list containing axioms + additional actions as abstractions (called "new axioms")
@@ -40,8 +41,6 @@ class Compress:
         self.frequencies = None
         self.config = config
         self.peek_pos = config.get("peek_pos", False)
-
-        self.AbsType = ABS_TYPES[config["abs_type"]]
 
         self.max_abs_len = None
 
@@ -692,6 +691,7 @@ if __name__ == "__main__":
     else:
         solutions = args.sol_data
     _, axioms = abs_util.load_axioms("equation_axioms.json")
+    axioms = [Axiom(ax_name) for ax_name in axioms]
 
     if args.test:
         doctest.testmod()
