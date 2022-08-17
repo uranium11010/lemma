@@ -110,13 +110,13 @@ class Trie:
         return out_str
 
 
-def make_abs_trie(abstractions):
+def make_rule_trie(rules):
     """
-    Convert abstractions into trie
+    Convert rules into trie
     """
     trie = Trie()
-    for ab in abstractions:
-        trie.add(tuple(key for key in ab), ab)
+    for rule in rules:
+        trie.add(list(rule), rule)
     return trie
 
 
@@ -313,12 +313,17 @@ if __name__ == "__main__":
     # print_solution(solutions[0])
     # doctest.testmod()
 
-    trie = DoubleTrie(accum=True)
-    trie.add(('a', 'b', 'c', 'd'), 1, max_length=4)
-    trie.add(('e', 'b', 'c'), 10, max_length=4)
-    trie.add(('a', 'f', 'c', 'g'), 100, max_length=4)
-    trie.add(('a', 'b', 'a'), 1000, max_length=4)
-    trie.add(('a', 'b', 'c'), 10000, max_length=4)
-    trie.add(('a', 'b', 'c', 'c', 'd'), 100000, max_length=4)
-    trie.add(('b', 'c', 'd', 'b', 'e', 'c', 'd'), 1000000, max_length=4)
-    print(trie)
+    # trie = DoubleTrie(accum=True)
+    # trie.add(('a', 'b', 'c', 'd'), 1, max_length=4)
+    # trie.add(('e', 'b', 'c'), 10, max_length=4)
+    # trie.add(('a', 'f', 'c', 'g'), 100, max_length=4)
+    # trie.add(('a', 'b', 'a'), 1000, max_length=4)
+    # trie.add(('a', 'b', 'c'), 10000, max_length=4)
+    # trie.add(('a', 'b', 'c', 'c', 'd'), 100000, max_length=4)
+    # trie.add(('b', 'c', 'd', 'b', 'e', 'c', 'd'), 1000000, max_length=4)
+    # print(trie)
+    from abstractions import Axiom, AxiomSeq, AxSeqTreeRelPos
+    rules = [Axiom('a', AxiomSeq), Axiom('b', AxiomSeq), Axiom('c', AxiomSeq), AxiomSeq.from_string('a~b'), AxiomSeq.from_string('c~b')]
+    print(make_rule_trie(rules))
+    rules = [Axiom('a', AxSeqTreeRelPos), Axiom('b', AxSeqTreeRelPos), Axiom('c', AxSeqTreeRelPos), AxSeqTreeRelPos.from_string('a~b:_1'), AxSeqTreeRelPos.from_string('c~b:1_')]
+    print(make_rule_trie(rules))

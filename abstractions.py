@@ -10,20 +10,19 @@ class Rule:
     @staticmethod
     def from_string(rule_str, abs_type=None):
         if '~' not in rule_str:
-            assert abs_type is None
-            return Axiom(rule_str)
+            return Axiom(rule_str, abs_type)
         else:
-            assert abs_type is not None
-            return ABS_TYPES[abs_type]
+            return ABS_TYPES[abs_type].from_string(rule_str)
 
 
 class Axiom(Rule):
-    def __init__(self, name):
+    def __init__(self, name, AbsType=None):
         self.name = name
+        self.AbsType = AbsType
         self.height = 0
 
-    def __len__(self):
-        return 1
+    def __iter__(self):
+        yield self.AbsType.get_abs_elt_from_ax(self)
 
     def __str__(self):
         return self.name
@@ -36,6 +35,9 @@ class Axiom(Rule):
 
     def __hash__(self):
         return hash(self.name)
+
+    def __len__(self):
+        return 1
 
 
 class Abstraction(Rule):
@@ -75,6 +77,13 @@ class Abstraction(Rule):
     def get_abs_elt(next_step, cur_steps):
         """
         Gets abstraction element corresponding to `next_step`, given `cur_steps`
+        """
+        raise NotImplementedError()
+
+    @staticmethod
+    def get_abs_elt_from_ax(ax: Axiom):
+        """
+        Gets abstraction element corresponding to a single axiom `ax`
         """
         raise NotImplementedError()
 
@@ -138,7 +147,7 @@ class AxiomSeq(Abstraction):
     def from_string(abs_str, ex_step=None, ex_states=None):
         def transform(component):
             if isinstance(component, str):
-                return Axiom(component)
+                return Axiom(component, AxiomSeq)
             return AxiomSeq(component)
         abstraction = abs_util.split_to_tree(abs_str, transform=transform)
         abstraction.ex_step = ex_step
@@ -164,8 +173,17 @@ class AxiomSeq(Abstraction):
     def get_abs_elt(next_step, cur_steps):
         return next_step.rule
 
+    @staticmethod
+    def get_abs_elt_from_ax(ax: Axiom):
+        return ax
+
     def __iter__(self):
-        yield from self.rules
+        for rule in self.rules:
+            if isinstance(rule, Axiom):
+                yield rule
+            else:
+                assert isinstance(rule, AxiomSeq)
+                yield from rule.rules
 
     def __str__(self):
         if self.name_str is None:
@@ -261,7 +279,7 @@ class AxSeqTreeRelPos(Abstraction):
     def from_string(abs_str, ex_step=None, ex_states=None):
         def transform(component, info=None):
             if isinstance(component, str):
-                return Axiom(component)
+                return Axiom(component, AxSeqTreeRelPos)
             split_pos_str = info.split('~')
             rel_pos = tuple(tuple(map(lambda x: None if x == '$' else x, pos.split('_'))) for pos in split_pos_str)
             return AxSeqTreeRelPos(component, rel_pos)
@@ -332,6 +350,10 @@ class AxSeqTreeRelPos(Abstraction):
             return (None, next_step.rule)
         last_step = cur_steps.actions[-1]
         return (AxSeqTreeRelPos.remove_prefix(last_step.tail_idx, next_step.head_idx), next_step.rule)
+
+    @staticmethod
+    def get_abs_elt_from_ax(ax: Axiom):
+        return (None, ax)
 
     def __iter__(self, prev_rel_pos=None):
         """

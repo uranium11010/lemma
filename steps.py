@@ -16,7 +16,7 @@ class Step:
     def from_string(step_str, AbsType=AxSeqTreeRelPos, ex_states=None):
         if '~' in step_str:
             return AbsStep.from_string(step_str, AbsType=AbsType, ex_states=ex_states)
-        return AxStep.from_string(step_str, ex_states=ex_states)
+        return AxStep.from_string(step_str, AbsType=AbsType, ex_states=ex_states)
 
     @staticmethod
     def from_name_idx_param(name, idx, param, AbsType=AxSeqTreeRelPos, ex_states=None, force_abs_step=False):
@@ -24,7 +24,7 @@ class Step:
             if force_abs_step:
                 raise
             assert not isinstance(idx, tuple) and not isinstance(param, tuple)
-            return AxStep(name, idx, param)
+            return AxStep(name, idx, param, AbsType, ex_states)
         assert isinstance(idx, tuple) and isinstance(param, tuple) and len(name) == len(idx) == len(param) > 1
         return AbsStep(tuple(Step.from_name_idx_param(name[i], idx[i], param[i]) for i in range(len(name))),
                        AbsType=AbsType, ex_states=ex_states, name=name, idx=idx, param=param)
@@ -47,7 +47,7 @@ class AxStep(Step):
     'comm 3, (x + 2)'
     """
 
-    def __init__(self, name, idx=None, param=None, ex_states=None):
+    def __init__(self, name, idx=None, param=None, AbsType=None, ex_states=None):
         self.ex_states = ex_states if ex_states is None else tuple(ex_states)
 
         self.name = name
@@ -61,24 +61,24 @@ class AxStep(Step):
         self.param_str = '$' if self.param is None else self.param
         self.step_str = None
 
-        self.axiom = Axiom(self.name)
+        self.axiom = Axiom(self.name, AbsType)
 
     @property
     def rule(self):
         return self.axiom
 
     @staticmethod
-    def from_string(step_str, ex_states=None):
+    def from_string(step_str, AbsType=None, ex_states=None):
         i = step_str.find(' ')
         if i == -1:
-            ax_step = AxStep(step_str, ex_states=ex_states)
+            ax_step = AxStep(step_str, AbsType=AbsType, ex_states=ex_states)
         else:
             name = step_str[:i]
             j = step_str.find(',')
             if j == -1:
-                ax_step = AxStep(name, param=step_str[i+1:], ex_states=ex_states)
+                ax_step = AxStep(name, param=step_str[i+1:], AbsType=AbsType, ex_states=ex_states)
             else:
-                ax_step = AxStep(name, idx=step_str[i+1:j], param=step_str[j+2:], ex_states=ex_states)
+                ax_step = AxStep(name, idx=step_str[i+1:j], param=step_str[j+2:], AbsType=AbsType, ex_states=ex_states)
         ax_step.step_str = step_str
         return ax_step
 
@@ -250,11 +250,10 @@ class Solution:
     """
 
     def __init__(self, states, actions):
-        assert isinstance(states, (list, tuple)) and isinstance(actions, (list, tuple))
         assert all(isinstance(step, Step) for step in actions)
         assert len(states) == len(actions) + 1
-        self.states = list(states)
-        self.actions = list(actions)
+        self.states = states
+        self.actions = actions
 
     @staticmethod
     def from_dict(solution, AbsType=AxSeqTreeRelPos):
