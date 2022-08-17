@@ -1,0 +1,9 @@
+{
+    "abs_type": "ax_seq",
+    "compressor": "iap_dtrie",
+    "max_abs_len": 2,
+    "file": "abstractions/iap_dtrie_ax_seq_2_8k.json",
+    "sol_file": "abs_sols/iap_dtrie_ax_seq_sol_2_8k.pkl",
+    "num_use": 8000,
+    "num_store": 200
+}

@@ -2,15 +2,10 @@
 Classes related to steps, axioms, and solutions
 """
 
-import json
-import numpy as np
-import warnings
-import argparse
-
+import doctest
 import abs_util
 from abstractions import Axiom, Abstraction, AxSeqTreeRelPos
 
-import doctest
 
 class Step:
     """
@@ -18,13 +13,13 @@ class Step:
     Subclasses: AxStep and AbsStep
     """
     @staticmethod
-    def from_string(step_str, ex_states=None):
+    def from_string(step_str, AbsType=AxSeqTreeRelPos, ex_states=None):
         if '~' in step_str:
-            return AbsStep.from_string(step_str, ex_states)
-        return AxStep.from_string(step_str, ex_states)
+            return AbsStep.from_string(step_str, AbsType=AbsType, ex_states=ex_states)
+        return AxStep.from_string(step_str, ex_states=ex_states)
 
     @staticmethod
-    def from_name_idx_param(name, idx, param, ex_states=None, force_abs_step=False):
+    def from_name_idx_param(name, idx, param, AbsType=AxSeqTreeRelPos, ex_states=None, force_abs_step=False):
         if not isinstance(name, tuple):
             if force_abs_step:
                 raise
@@ -32,7 +27,10 @@ class Step:
             return AxStep(name, idx, param)
         assert isinstance(idx, tuple) and isinstance(param, tuple) and len(name) == len(idx) == len(param) > 1
         return AbsStep(tuple(Step.from_name_idx_param(name[i], idx[i], param[i]) for i in range(len(name))),
-                       ex_states=ex_states, name=name, idx=idx, param=param)
+                       AbsType=AbsType, ex_states=ex_states, name=name, idx=idx, param=param)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(\"{str(self)}\")"
 
 
 class AxStep(Step):
@@ -98,9 +96,6 @@ class AxStep(Step):
             self.step_str = f"{self.name} {self.idx}, {self.param}"
         return self.step_str
 
-    def __repr__(self):
-        return f"AxStep(\"{str(self)}\")"
-
 
 class AbsStep(Step):
     """
@@ -126,7 +121,7 @@ class AbsStep(Step):
     3
     """
 
-    def __init__(self, steps, ex_states=None, AbsType=AxSeqTreeRelPos, name=None, idx=None, param=None):
+    def __init__(self, steps, AbsType=AxSeqTreeRelPos, ex_states=None, name=None, idx=None, param=None):
         assert isinstance(steps, (list, tuple))
         assert len(steps) > 1
         assert all(isinstance(step, Step) for step in steps)
@@ -152,7 +147,7 @@ class AbsStep(Step):
         return self.abstraction
 
     @staticmethod
-    def from_string(step_str, ex_states=None):
+    def from_string(step_str, AbsType=AxSeqTreeRelPos, ex_states=None):
         i = step_str.index(' ')
         j = step_str.index(',')
         name_str = step_str[:i]
@@ -167,26 +162,30 @@ class AbsStep(Step):
         idx = abs_util.split_to_tree(idx_str, transform=transform)
         param = abs_util.split_to_tree(param_str, transform=transform)
 
-        abs_step = Step.from_name_idx_param(name, idx, param, ex_states=ex_states, force_abs_step=True)
+        abs_step = Step.from_name_idx_param(name, idx, param, AbsType=AbsType, ex_states=ex_states, force_abs_step=True)
         abs_step.strings_dict = {"name_str": name_str, "idx_str": idx_str, "param_str": param_str}
 
         return abs_step
 
     @staticmethod
     def from_abs(ax_steps, abstraction, ex_states=None):
+        """
+        Given `ax_steps` and `abstraction`, return `AbsStep` object with `ax_steps`
+        but tree structure given by `abstraction`
+        """
         assert all(isinstance(step, AxStep) for step in ax_steps)
         assert isinstance(abstraction, Abstraction)
         assert len(ax_steps) == len(abstraction)
         # get indices for delimiting AxStep objects
         sub_abs_pos = [0]
         for sub_abs in abstraction.rules:
-            sub_abs_pos.append(sub_abs_pos[-1] + (1 if isinstance(sub_abs, str) else len(sub_abs)))
+            sub_abs_pos.append(sub_abs_pos[-1] + len(sub_abs))
         # create AbsStep or AxStep objects
         steps = tuple(AbsStep.from_abs(ax_steps[sub_abs_pos[i]:sub_abs_pos[i+1]], abstraction=abstraction.rules[i])
                       if isinstance(abstraction.rules[i], Abstraction)
                       else ax_steps[sub_abs_pos[i]]
                       for i in range(len(abstraction.rules)))
-        return AbsStep(steps, ex_states)
+        return AbsStep(steps, AbsType=abstraction.__class__, ex_states=ex_states)
 
     def __len__(self):
         return self.length
@@ -217,9 +216,6 @@ class AbsStep(Step):
 
     def __str__(self):
         return f"{self.name_str} {self.idx_str}, {self.param_str}"
-
-    def __repr__(self):
-        return f"AbsStep(\"{str(self)}\")"
 
     def __iter__(self):
         """
@@ -261,7 +257,7 @@ class Solution:
         self.actions = list(actions)
 
     @staticmethod
-    def from_dict(solution):
+    def from_dict(solution, AbsType=AxSeqTreeRelPos):
         """
         solution: {"problem": <str>, "solution": [{"state": <str>, "action": <str>}, ...]}
         """
@@ -269,7 +265,7 @@ class Solution:
         # list of string of states
         states = [step["state"] for step in solution]
         # list of Step objects (tuple of AxStep/Step objects)
-        actions = [Step.from_string(solution[i]["action"], ex_states=states[i-1:i+1])
+        actions = [Step.from_string(solution[i]["action"], AbsType=AbsType, ex_states=states[i-1:i+1])
                    for i in range(1, len(solution))]
         return Solution(states, actions)
 

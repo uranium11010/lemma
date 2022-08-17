@@ -17,13 +17,13 @@ from datetime import datetime
 import doctest
 
 from steps import Step, AbsStep, Solution
-from abstractions import Abstraction, AxiomSeq, AxSeqDfsIdxRelPos, AxSeqTreeRelPos
+from abstractions import Abstraction, ABS_TYPES
 import abs_util
 
 
 def log(x):
     ' For entropy calculations '
-    return -100 if x == 0 else math.log(x)
+    return -1000. if x == 0 else math.log(x)
 
 
 class Compress:
@@ -41,14 +41,7 @@ class Compress:
         self.config = config
         self.peek_pos = config.get("peek_pos", False)
 
-        if config["abs_type"] == "tree_rel_pos":
-            self.AbsType = AxSeqTreeRelPos
-        elif config["abs_type"] == "dfs_idx_rel_pos":
-            self.AbsType = AxSeqDfsIdxRelPos
-        elif config["abs_type"] == "ax_seq":
-            self.AbsType = AxiomSeq
-        else:
-            raise Exception("Invalid abstraction type")
+        self.AbsType = ABS_TYPES[config["abs_type"]]
 
         self.max_abs_len = None
 
@@ -82,7 +75,7 @@ class Compress:
             new_ax = self.AbsType.from_steps(ax_subseq)
             if new_ax in abstractions:
                 new_states = solution.states[:i+1] + solution.states[i+abs_len:]
-                new_actions = solution.actions[:i] + [AbsStep(ax_subseq, solution.states[i:i+abs_len+1])] + solution.actions[i+abs_len:]
+                new_actions = solution.actions[:i] + [AbsStep(ax_subseq, self.AbsType, solution.states[i:i+abs_len+1])] + solution.actions[i+abs_len:]
                 solution = Solution(new_states, new_actions)
             i += 1
         return solution
@@ -704,7 +697,7 @@ if __name__ == "__main__":
         doctest.testmod()
     else:
         used_sols = solutions[:num_use] if isinstance(num_use, int) else [solutions[i] for i in num_use]
-        solutions = [Solution.from_dict(sol) for sol in used_sols]
+        solutions = [Solution.from_dict(sol, AbsType=ABS_TYPES[args.abs_type]) for sol in used_sols]
         start_time = datetime.now()
         compressor_dict = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_heur": IAPHeuristic, "iap_ent": IAPEntropy,
                            "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
