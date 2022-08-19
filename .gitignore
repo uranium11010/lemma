@@ -1,4 +1,5 @@
 # Temp files
+*.swp
 *~
 
 # Debugging
@@ -133,7 +134,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
-# Temp files
-*.swp
-*~

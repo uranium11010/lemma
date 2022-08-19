@@ -87,6 +87,13 @@ class Abstraction(Rule):
         """
         raise NotImplementedError()
 
+    @staticmethod
+    def get_ax_from_abs_elt(abs_elt):
+        """
+        Gets axiom corresponding to an abstraction element `abs_elt`
+        """
+        raise NotImplementedError()
+
     def has_instance(self, steps):
         """
         NOT USED
@@ -176,6 +183,10 @@ class AxiomSeq(Abstraction):
     @staticmethod
     def get_abs_elt_from_ax(ax: Axiom):
         return ax
+
+    @staticmethod
+    def get_ax_from_abs_elt(abs_elt):
+        return abs_elt
 
     def __iter__(self):
         for rule in self.rules:
@@ -354,6 +365,10 @@ class AxSeqTreeRelPos(Abstraction):
     @staticmethod
     def get_abs_elt_from_ax(ax: Axiom):
         return (None, ax)
+
+    @staticmethod
+    def get_ax_from_abs_elt(abs_elt):
+        return abs_elt[1]
 
     def __iter__(self, prev_rel_pos=None):
         """
