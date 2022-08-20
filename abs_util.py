@@ -290,7 +290,7 @@ def split_to_tree_helper(string, brkt_map, div, delim, transform, info_mark, i=-
     arr = []
     l = i + 1
     while True:
-        if string[l] == delim[0]:
+        if l < len(string) and string[l] == delim[0]:
             r = brkt_map[l]
             arr.append(split_to_tree_helper(string, brkt_map, div, delim, transform, info_mark, l, r))
             r += 1
