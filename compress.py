@@ -12,6 +12,7 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass
 import heapq
+import itertools
 
 from datetime import datetime
 import doctest
@@ -339,11 +340,12 @@ class IAPLogN(IterAbsPairs):
         super().__init__(solutions, axioms, config)
         self.max_abs_len = config.get("max_abs_len")
         self.include_eos = config.get("include_eos", False)
-        assert self.top is None and self.thres is None  # automatically determine no. abs.
+        # assert self.top is None and self.thres is None  # automatically determine no. abs.
 
     def abstract(self):
         """
         Uses log factor in uniform distribution probabilistic model to determine no. of abs.
+        Only chooses one abstraction; use `iter_abstract` to get multiple
         """
         frequencies = self.frequencies or self.get_frequencies(len(self.solutions), self.max_abs_len)
         all_frequencies = self.frequencies or self.get_frequencies(len(self.solutions), 2*self.max_abs_len-1, self.max_abs_len+1)
@@ -583,11 +585,10 @@ class IAPDTrieLogN(IAPLogN):
         num_abs_ax = len(self.axioms) + self.include_eos
         avg_length = sum(len(sol.actions) for sol in self.solutions) / len(self.solutions) + self.include_eos
         top_abs = []
-        count = 0
-        while True:
+        print("ABS SCORE INCREMENTS:")
+        for count in itertools.count() if self.top is None else range(self.top):
             # with open(f"debug/debug_{count}.txt", "w") as f:
             #     f.write(str(frequencies))
-            count += 1
             # print(max(x.score for x in abs_heap if not x.removed))
             # print(max(x.value * (x.depth-1) for x in abs_heap_dict))
             top, score = pop_heap()
@@ -595,7 +596,7 @@ class IAPDTrieLogN(IAPLogN):
             # print(score)
             increment = score * log(num_abs_ax + 1) - log(1 + 1/num_abs_ax) * avg_length
             print(increment)
-            if increment < 0:
+            if self.top is None and increment < 0:
                 break
             top_abs.append((top, occurs / len(self.solutions), score))
             num_abs_ax += 1
@@ -631,6 +632,10 @@ class IAPDTrieLogN(IAPLogN):
             ab.freq = freq
             ab.score = score
         return self.abstractions
+
+
+COMPRESSORS = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_heur": IAPHeuristic, "iap_ent": IAPEntropy,
+               "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
 
 
 def debug():
@@ -699,9 +704,7 @@ if __name__ == "__main__":
         used_sols = solutions[:num_use] if isinstance(num_use, int) else [solutions[i] for i in num_use]
         solutions = [Solution.from_dict(sol, AbsType=ABS_TYPES[args.abs_type]) for sol in used_sols]
         start_time = datetime.now()
-        compressor_dict = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_heur": IAPHeuristic, "iap_ent": IAPEntropy,
-                           "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
-        compressor = compressor_dict[args.compressor](solutions, axioms, vars(args))
+        compressor = COMPRESSORS[args.compressor](solutions, axioms, vars(args))
         if args.sol_file is not None or args.num_ex_sol:
             sols, abs_ax = compressor.iter_abstract(args.iter, True, num_store)
             print("TOTAL TIME:", datetime.now() - start_time)
