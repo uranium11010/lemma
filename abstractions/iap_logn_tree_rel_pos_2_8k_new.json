@@ -1,0 +1,1 @@
+{"num": 29, "axioms": ["refl", "comm", "assoc", "dist", "sub_comm", "eval", "add0", "sub0", "mul1", "div1", "div_self", "sub_self", "subsub", "mul0", "zero_div", "add", "sub", "mul", "div", "assoc~eval:_1", "mul1~eval:0_1", "dist~eval:_0", "eval~eval:0_", "sub~assoc:$_0.0", "comm~assoc:0_", "sub~assoc:$_0.1", "div~eval:$_0.1.0", "assoc~assoc:_0", "comm~div:0.0_$"]}

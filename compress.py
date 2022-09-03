@@ -18,7 +18,7 @@ from datetime import datetime
 import doctest
 
 from steps import Step, AbsStep, Solution
-from abstractions import Axiom, Abstraction, ABS_TYPES
+from abstractions import Axiom, Abstraction, ABS_TYPES, AxSeqTreeRelPos
 import abs_util
 
 
@@ -38,6 +38,7 @@ class Compress:
         self.abstractions = None
         self.new_axioms = self.axioms.copy()  # list containing axioms + additional actions as abstractions (called "new axioms")
         self.new_axiom_set = set(self.new_axioms)
+        self.abstracted_solutions = None
 
         self.frequencies = None
         self.config = config
@@ -80,12 +81,15 @@ class Compress:
             i += 1
         return solution
     
-    def abstracted_sol(self, abstractions=None, num_new_sols=None):
+    def abstracted_sol(self, num_new_sols=None):
         """
         Get abstracted solutions from set of abstractions
         Format: same as self.solutions
         (i.e. tuple of Solution objects)
         """
+        if (sols := self.abstracted_solutions) is not None:
+            return sols if num_new_sols is None else sols[:num_new_sols]
+
         abstractions = self.abstractions or self.abstract()
         max_len =  max(len(abstraction.rules) for abstraction in abstractions) if self.max_abs_len is None else self.max_abs_len
         
@@ -208,27 +212,47 @@ class IterAbsPairs(Compress):
         self.only_flat = config.get("only_flat", False)
         self.max_abs_len = 2
 
-    def get_frequencies(self, factor=1, max_len=2, min_len=2):
+    def get_frequencies(self, factor=1, max_len=2, min_len=2, mask=None):
         """
         Gets frequencies of (current action, next action) pairs
         Also stores example abstraction for each rel. pos. if --peek
         `factor` is factor to divide no. of occurrences by
+        Disallow abstractions containing rules in `mask` (iterable)
         """
-        frequencies = defaultdict(int) if not self.peek_pos else defaultdict(lambda: [0, defaultdict(int), {}, {}])
-        for i, sol in enumerate(self.solutions):
-            for length in range(min_len, 1 + (max_len or len(sol.actions))):
-                for j in range(len(sol.actions) - length + 1):
-                    if self.only_flat and any(len(sol.actions[k]) != 1 for k in range(j, j+length)):
-                        continue
-                    abstract = self.AbsType.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
-                    if not self.peek_pos:
-                        frequencies[abstract] += 1
+        if mask is None and not self.only_flat:
+            mask_list = [[(0, len(sol.actions))] for sol in self.solutions]
+        else:
+            if mask is None:
+                mask = set()
+            mask_list = [[] for _ in self.solutions]
+            for i, sol in enumerate(self.solutions):
+                in_legal_zone = False
+                for j, action in enumerate(sol.actions):
+                    if action.rule in mask or (self.only_flat and len(action) != 1):
+                        if in_legal_zone:
+                            in_legal_zone = False
+                            mask_list[i].append((start_idx, j))
                     else:
-                        frequencies[abstract][0] += 1
-                        wp_abs = AxSeqTreeRelPos.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
-                        frequencies[abstract][1][wp_abs.rel_pos] += 1
-                        frequencies[abstract][2][wp_abs.rel_pos] = wp_abs.ex_steps
-                        frequencies[abstract][3][wp_abs.rel_pos] = wp_abs.ex_states
+                        if not in_legal_zone:
+                            in_legal_zone = True
+                            start_idx = j
+                if in_legal_zone:
+                    mask_list[i].append((start_idx, len(sol.actions)))
+
+        frequencies = defaultdict(int) if not self.peek_pos else defaultdict(lambda: [0, defaultdict(int), {}, {}])
+        for i, (sol, legal_zones) in enumerate(zip(self.solutions, mask_list)):
+            for length in range(min_len, 1 + (max_len or len(sol.actions))):
+                for start_idx, end_idx in legal_zones:
+                    for j in range(start_idx, end_idx - length + 1):
+                        abstract = self.AbsType.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
+                        if not self.peek_pos:
+                            frequencies[abstract] += 1
+                        else:
+                            frequencies[abstract][0] += 1
+                            wp_abs = AxSeqTreeRelPos.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
+                            frequencies[abstract][1][wp_abs.rel_pos] += 1
+                            frequencies[abstract][2][wp_abs.rel_pos] = wp_abs.ex_steps
+                            frequencies[abstract][3][wp_abs.rel_pos] = wp_abs.ex_states
         if not self.peek_pos:
             for abstract in frequencies:
                 frequencies[abstract] /= factor
@@ -327,53 +351,49 @@ class IAPHeuristic(IterAbsPairs):
         return frequencies
 
 
-@dataclass
-class AbsHeapElt:
-    abstraction: Abstraction
-
-    def __lt__(self, other):
-        return self.abstraction.score > other.abstraction.score
-
-
 class IAPLogN(IterAbsPairs):
     def __init__(self, solutions, axioms, config):
         super().__init__(solutions, axioms, config)
         self.max_abs_len = config.get("max_abs_len")
         self.include_eos = config.get("include_eos", False)
-        # assert self.top is None and self.thres is None  # automatically determine no. abs.
+        assert self.thres is None
 
-    def abstract(self):
+    def get_top_abs(self, mask=None):
         """
         Uses log factor in uniform distribution probabilistic model to determine no. of abs.
         Only chooses one abstraction; use `iter_abstract` to get multiple
         """
-        frequencies = self.frequencies or self.get_frequencies(len(self.solutions), self.max_abs_len)
-        all_frequencies = self.frequencies or self.get_frequencies(len(self.solutions), 2*self.max_abs_len-1, self.max_abs_len+1)
-        all_frequencies |= frequencies
-
-        for abstract in all_frequencies:
+        frequencies = self.frequencies or self.get_frequencies(len(self.solutions), self.max_abs_len, mask=mask)
+        for abstract in frequencies:
             abstract.score = abstract.freq * (len(abstract) - 1)
-        abs_heap = [AbsHeapElt(abstraction) for abstraction in frequencies]
-        heapq.heapify(abs_heap)
-
+        top_abs = max(frequencies, key=lambda ab: ab.score)
         num_abs_ax = len(self.axioms) + self.include_eos
         avg_length = sum(len(sol.actions) for sol in self.solutions) / len(self.solutions) + self.include_eos
-        top_abs = []
-        while True:
-            top = heapq.heappop(abs_heap).abstraction
-            increment = top.score * log(num_abs_ax + 1) - log(1 + 1/num_abs_ax) * avg_length
+        increment = top_abs.score * log(num_abs_ax + 1) - log(1 + 1/num_abs_ax) * avg_length
+        self.abstractions = [top_abs]
+        return top_abs, increment
+
+    def abstract(self):
+        """
+        Abstract common (cur, next) pairs iteratively K times
+        """
+        sols = self.solutions
+        axioms = self.axioms
+        abstractions = []
+        abs_set = set()
+        print("ABS SCORE INCREMENTS:")
+        for i in itertools.count() if self.top is None else range(self.top):
+            abstractor = IAPLogN(sols, axioms, self.config)
+            top_abs, increment = abstractor.get_top_abs(mask=abs_set)
             print(increment)
-            if increment < 0:
+            if self.top is None and increment < 0:
                 break
-            top_abs.append(top)
-            num_abs_ax += 1
-            avg_length -= top.score
-            break
-            # for l in range(-self.max_abs_len+1, len(top)):
-            #     for r in range(max(1, l+2), l+self.max_abs_len+1):
-            #         lol
-        self.abstractions = top_abs
-        return top_abs
+            abstractions.append(top_abs)
+            abs_set.add(top_abs)
+            sols = abstractor.abstracted_sol()
+            axioms = abstractor.new_axioms
+        self.abstracted_solutions = sols
+        return abstractions
 
 
 class IAPEntropy(IterAbsPairs):
