@@ -1,0 +1,11 @@
+{
+    "abs_type": "tree_rel_pos",
+    "compressor": "iap_rand",
+    "max_abs_len": null,
+    "top": 8,
+    "thres": 0.05,
+    "file": "abstractions/iap_rand_tree_rel_pos_any_t8t05_8k.json",
+    "sol_file": "abs_sols/iap_rand_tree_rel_pos_sol_any_t8t05_8k.pkl",
+    "num_use": 8000,
+    "num_store": 200
+}
