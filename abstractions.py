@@ -10,7 +10,7 @@ class Rule:
     @staticmethod
     def from_string(rule_str, abs_type=None):
         if '~' not in rule_str:
-            return Axiom(rule_str, abs_type)
+            return Axiom(rule_str, ABS_TYPES[abs_type])
         else:
             return ABS_TYPES[abs_type].from_string(rule_str)
 

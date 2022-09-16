@@ -87,15 +87,15 @@ class Compress:
         Format: same as self.solutions
         (i.e. tuple of Solution objects)
         """
-        if (sols := self.abstracted_solutions) is not None:
-            return sols if num_new_sols is None else sols[:num_new_sols]
-
         abstractions = self.abstractions or self.abstract()
         max_len =  max(len(abstraction.rules) for abstraction in abstractions) if self.max_abs_len is None else self.max_abs_len
         
         self.new_axioms += abstractions
         abs_set = set(abstractions)
         self.new_axiom_set |= abs_set
+
+        if (sols := self.abstracted_solutions) is not None:
+            return sols if num_new_sols is None else sols[:num_new_sols]
 
         new_sols = self.solutions.copy() if num_new_sols is None else self.solutions[:num_new_sols]
         for abs_len in range(max_len, 1, -1):
@@ -413,6 +413,7 @@ class IAPLogN(IterAbsPairs):
             abs_set.add(top_abs)
             sols = abstractor.abstracted_sol()
             axioms = abstractor.new_axioms
+        self.abstractions = abstractions
         self.abstracted_solutions = sols
         return abstractions
 
