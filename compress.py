@@ -274,7 +274,7 @@ class IterAbsPairs(Compress):
         """
         thres = (self.num_ax**(-0.75) if self.top is None else 0) if self.thres is None else self.thres  # -0.75 is just an arbitrary exponent
         frequencies = self.frequencies or self.get_frequencies(len(self.solutions))
-        pairs = list(filter(lambda x: x.freq >= thres, frequencies.keys()))
+        pairs = list(filter(lambda x: x.freq >= thres, frequencies))
         pairs.sort(reverse=True, key=lambda x: x.freq)
         top_pairs = pairs[:self.top]
         self.abstractions = top_pairs
@@ -300,6 +300,27 @@ class IterAbsPairs(Compress):
                 return axioms + abstractions
             sols = abstractor.abstracted_sol()
             axioms = abstractor.new_axioms
+
+
+class IAPRandom(IterAbsPairs):
+    def __init__(self, solutions, axioms, config):
+        super().__init__(solutions, axioms, config)
+        self.max_abs_len = config.get("max_abs_len")
+        assert self.top is not None
+
+    def abstract(self):
+        """
+        Returns self.top random subsequences (current action, next action)
+        that appear in dataset of solutions
+        """
+        frequencies = self.frequencies or self.get_frequencies(factor=len(self.solutions), max_len=self.max_abs_len)
+        if self.thres is None:
+            pairs = list(frequencies)
+        else:
+            pairs = list(filter(lambda x: x.freq >= self.thres, frequencies))
+        top_pairs = random.sample(pairs, self.top)
+        self.abstractions = top_pairs
+        return top_pairs
 
 
 class IAPHeuristic(IterAbsPairs):
@@ -654,8 +675,8 @@ class IAPDTrieLogN(IAPLogN):
         return self.abstractions
 
 
-COMPRESSORS = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_heur": IAPHeuristic, "iap_ent": IAPEntropy,
-               "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
+COMPRESSORS = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_rand": IAPRandom, "iap_heur": IAPHeuristic,
+               "iap_ent": IAPEntropy, "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
 
 
 def debug():
@@ -681,7 +702,7 @@ if __name__ == "__main__":
     parser.add_argument("--thres", type=float, default=None, help="Threshold frequency for abstractions")
     parser.add_argument("--top", metavar="K", type=int, default=None, help="Choose top K abstractions")
     parser.add_argument("--abs-type", dest="abs_type", default="tree_rel_pos", choices=["ax_seq", "dfs_idx_rel_pos", "tree_rel_pos"], help="Type of abstraction")
-    parser.add_argument("--compressor", default="iap_heur", choices=["pair_graph", "iap", "iap_heur", "iap_ent", "iap_logn", "iap_trie", "iap_dtrie"], help="Type of algorithm for discovering abstractions")
+    parser.add_argument("--compressor", default="iap_heur", choices=COMPRESSORS, help="Type of algorithm for discovering abstractions")
     parser.add_argument("--peek", dest="peek_pos", action="store_true", help="Take peek at relative positions (with abs. type tree_rel_pos) even when we don't consider them")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Display example axioms")
     parser.add_argument("--debug", action="store_true", help="Debug")
