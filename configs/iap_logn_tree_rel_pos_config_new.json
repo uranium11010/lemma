@@ -1,7 +1,0 @@
-{
-    "abs_type": "tree_rel_pos",
-    "compressor": "iap_logn",
-    "max_abs_len": 2,
-    "file": "abstractions/iap_logn_tree_rel_pos_2_new.json",
-    "num_use": 80000
-}

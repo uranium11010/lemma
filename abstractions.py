@@ -94,27 +94,6 @@ class Abstraction(Rule):
         """
         raise NotImplementedError()
 
-    def has_instance(self, steps):
-        """
-        NOT USED
-
-        >>> from steps import *; from abstractions import *
-        >>> abstraction = AxSeqTreeRelPos.from_steps([Step.from_string("eval 0.1, 2/2"), Step.from_string("comm~assoc 0.0.0~0.0, 3x~(x * 3) / 3")])
-        >>> abstraction.has_instance((Step.from_string("eval 0.0.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.1, 1y"), AxStep.from_string("assoc 0.1.1, (x * 3) / 3")])))
-        False
-        >>> abstraction.has_instance((Step.from_string("eval 0.1.1.1, 1/5"), AbsStep([AxStep.from_string("comm 0.1.1.0.0, 1y"), AxStep.from_string("assoc 0.1.1.0, (y * 1) / 1")])))
-        True
-        """
-        return self == self.__class__.from_steps(steps)
-
-    def within(self, steps):
-        """
-        Checks whether abstraction is present among a list of steps
-        (e.g. Solution.actions tuple)
-        """
-        num_ax = len(self.rules)
-        return any(self.has_instance(steps[i:i+num_ax]) for i in range(len(steps)-num_ax+1))
-
     def __iter__(self):
         """
         Allows iteration through the constituents of the abstraction
@@ -210,61 +189,6 @@ class AxiomSeq(Abstraction):
 
     def __hash__(self):
         return hash(self.rules)
-
-
-class AxSeqDfsIdxRelPos(Abstraction):
-    """
-    Abstraction: sequence of rules + relative positions of application
-    DOES NOT FULLY SUPPORT NESTED ABSTRACTIONS (CURRENTLY LOSES POSITION INFO)
-
-    >>> from steps import *; from abstractions import *
-    >>> AxSeqDfsIdxRelPos([Step.from_string("refl"), AbsStep((Step.from_string("sub 1"), Step.from_string("comm 3, 3x"))), Step.from_string("comm 2, 2x")]).rel_pos
-    (None, -1)
-    """
-
-    def __init__(self, steps, ex_states=None):
-        """
-        Builds abstraction from list of Step objects
-        """
-        self.ex_steps = steps
-        self.ex_states = ex_states
-        self.freq = None
-        self.rules = tuple(step.name_str for step in steps)
-        self.rel_pos = tuple(int(steps[i+1].head_idx) - int(steps[i].head_idx)
-                             if steps[i+1].head_idx is not None and steps[i].head_idx is not None
-                             else None
-                             for i in range(len(steps)-1))
-
-
-    def has_instance(self, steps):
-        """
-        >>> from steps import Step, AxStep, AbsStep
-        >>> seq = AxSeqDfsIdxRelPos([Step.from_string("eval 3, 2/2"), Step.from_string("sub~comm $~3, 1~3x")])
-        >>> seq.has_instance((Step.from_string("refl~refl $~$, $~$"), Step.from_string("eval 3, 1/5"), AbsStep([AxStep.from_string("sub 1"), AxStep.from_string("comm 6, 1y")])))
-        False
-        >>> seq.has_instance((Step.from_string("refl~refl $~$, $~$"), Step.from_string("eval 5, 1/5"), AbsStep([AxStep.from_string("sub 1"), AxStep.from_string("comm 5, 1y")])))
-        True
-        """
-        if not all(axiom == step.name_str for axiom, step in zip(self.rules, steps)):
-            return False
-        return all(self.rel_pos[i] is None or int(steps[i+1].head_idx) - int(steps[i].head_idx) == self.rel_pos[i] for i in range(len(self.rel_pos)))
-
-    def __str__(self):
-        try:
-            return f"{self.name_str}:{self.pos_str}"
-        except AttributeError:
-            self.name_str = '~'.join(self.rules)
-            self.pos_str = '~'.join('$' if pos is None else str(pos) for pos in self.rel_pos)
-            return f"{self.name_str}:{self.pos_str}"
-
-    def __repr__(self):
-        return f"AxSeqDfsIdxRelPos({self.rules}, {self.rel_pos})"
-
-    def __eq__(self, other):
-        return self.rules == other.rules and self.rel_pos == other.rel_pos
-
-    def __hash__(self):
-        return hash(self.rules) + hash(self.rel_pos)
 
 
 class AxSeqTreeRelPos(Abstraction):
@@ -417,7 +341,7 @@ class AxSeqTreeRelPos(Abstraction):
         return hash(self.rules) ^ hash(self.rel_pos)
 
 
-ABS_TYPES = {"tree_rel_pos": AxSeqTreeRelPos, "dfs_idx_rel_pos": AxSeqDfsIdxRelPos, "ax_seq": AxiomSeq}
+ABS_TYPES = {"ax_seq": AxiomSeq, "tree_rel_pos": AxSeqTreeRelPos}
 
 
 if __name__ == "__main__":
