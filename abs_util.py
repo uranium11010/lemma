@@ -4,7 +4,6 @@ Provides tools for dealing with ConPoLe solutions
 
 import json
 import warnings
-import doctest
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -21,31 +20,6 @@ def load_axioms(f_name):
         num_ax = axiom_dict["num"]
         axioms = axiom_dict["axioms"]
     return num_ax, axioms
-
-
-def draw_graph(N, matrix):
-    """
-    Draws directed graph from adjacency matrix
-    """
-    plt.axis("off")
-    points = []
-    for i in range(N):
-        points.append((-np.sin(2*np.pi*i/N), np.cos(2*np.pi*i/N)))
-        plt.scatter(points[-1][0], points[-1][1], c='C0')
-        plt.annotate(str(i), points[-1])
-
-    k = 0
-    for i in range(N):
-        for j in range(N):
-            if matrix[i,j]:
-                x1, y1 = points[i]
-                x2, y2 = points[j]
-                xm, ym = (x1+x2)/2, (y1+y2)/2
-                plt.arrow(x1, y1, xm-x1, ym-y1, color="C{}".format(k%10), head_width=0.05, head_length=0.075)
-                plt.plot([xm, x2], [ym, y2], color="C{}".format(k%10))
-                k += 1
-
-    plt.show()
 
 
 class Trie:
@@ -92,7 +66,6 @@ class Trie:
         return final_child
 
     def __str__(self):
-        # self_str = str(self.key)[:8] if self.value is None else str(self.key)[-4:] + ': ' + str(self.value)[:4]
         self_str = str(self.key) if self.value is None else str(self.key) + ': ' + str(self.value)
         if not self.children:
             return f"    {self_str}    "
@@ -306,24 +279,3 @@ def split_to_tree_helper(string, brkt_map, div, delim, transform, info_mark, i=-
             return transform(arr, info)
         assert string[r] == div
         l = r + 1
-    
-
-if __name__ == "__main__":
-    # solutions = load_solutions("equations-8k.json")
-    # print_solution(solutions[0])
-    # doctest.testmod()
-
-    # trie = DoubleTrie(accum=True)
-    # trie.add(('a', 'b', 'c', 'd'), 1, max_length=4)
-    # trie.add(('e', 'b', 'c'), 10, max_length=4)
-    # trie.add(('a', 'f', 'c', 'g'), 100, max_length=4)
-    # trie.add(('a', 'b', 'a'), 1000, max_length=4)
-    # trie.add(('a', 'b', 'c'), 10000, max_length=4)
-    # trie.add(('a', 'b', 'c', 'c', 'd'), 100000, max_length=4)
-    # trie.add(('b', 'c', 'd', 'b', 'e', 'c', 'd'), 1000000, max_length=4)
-    # print(trie)
-    from abstractions import Axiom, AxiomSeq, AxSeqTreeRelPos
-    rules = [Axiom('a', AxiomSeq), Axiom('b', AxiomSeq), Axiom('c', AxiomSeq), AxiomSeq.from_string('a~b'), AxiomSeq.from_string('c~b')]
-    print(make_rule_trie(rules))
-    rules = [Axiom('a', AxSeqTreeRelPos), Axiom('b', AxSeqTreeRelPos), Axiom('c', AxSeqTreeRelPos), AxSeqTreeRelPos.from_string('a~b:_1'), AxSeqTreeRelPos.from_string('c~b:1_')]
-    print(make_rule_trie(rules))

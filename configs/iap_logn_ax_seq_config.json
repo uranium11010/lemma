@@ -1,0 +1,8 @@
+{
+    "abs_type": "ax_seq",
+    "compressor": "iap_logn",
+    "max_abs_len": null,
+    "top": 40,
+    "file": "abstractions/iap_logn_ax_seq_any_t40_8k.json",
+    "num_use": 8000
+}

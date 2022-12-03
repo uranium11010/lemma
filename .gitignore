@@ -2,7 +2,14 @@
 *.swp
 *~
 
-# Debugging
+# Data and output
+*.txt
+*.json
+*.pkl
+data/
+configs/
+abstractions/
+abs_sols/
 debug/
 
 # Byte-compiled / optimized / DLL files

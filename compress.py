@@ -52,19 +52,6 @@ class Compress:
         """
         raise NotImplementedError
 
-    # OLD
-    # def get_axiom_tuple(self, solution):
-    #     """
-    #     Get tuple of integers corresponding to axioms in solution
-    #     solution: format in self.solutions[i]["solution"] (i.e. list of state-action pairs as dictionaries)
-    #     """
-    #     if self.get_ax_pos:
-    #         return tuple((self.axiom_index.get(self.get_ax_name(solution[i]["action"])),
-    #                       self.get_ax_pos(solution[i]["action"]))
-    #                      for i in range(1, len(solution)))
-    #     return tuple(self.axiom_index.get(self.get_ax_name(solution[i]["action"]))
-    #                  for i in range(1, len(solution)))
-
     def abstract_step(self, solution, abs_len, abstractions):
         """
         In solution, abstract out the first length-'abs_len' subsequence that is an abstraction
@@ -88,7 +75,7 @@ class Compress:
         (i.e. tuple of Solution objects)
         """
         abstractions = self.abstractions or self.abstract()
-        max_len =  max(len(abstraction.rules) for abstraction in abstractions) if self.max_abs_len is None else self.max_abs_len
+        max_len = max(len(abstraction.rules) for abstraction in abstractions) if self.max_abs_len is None else self.max_abs_len
         
         self.new_axioms += abstractions
         abs_set = set(abstractions)
@@ -101,107 +88,7 @@ class Compress:
         for abs_len in range(max_len, 1, -1):
             for i in range(len(new_sols)):
                 new_sols[i] = self.abstract_step(new_sols[i], abs_len, abs_set)
-                # while True:
-                #     res = self.abstract_step(new_sols[i], abs_len, abs_set)
-                #     if res is None:
-                #         break
-                #     else:
-                #         new_sols[i] = res
         return new_sols
-
-
-# DEPRECATED
-class CommonPairs(Compress):
-    """
-    Finds common (cur, next) action pairs among solutions and constructs corresponding
-    digraph with these pairs as edges.
-    Uses paths of this digraph as abstractions.
-    """
-    def __init__(self, solutions, axioms, get_ax_name, get_ax_param, thres=None):
-        super().__init__(solutions, axioms, get_ax_name, get_ax_param)
-        self.thres = thres
-
-    def get_frequencies(self):
-        """
-        Gets frequencies of (current action, next action) pairs
-        """
-        frequencies = np.zeros((self.num_ax, self.num_ax), dtype=int)
-        for i in range(len(self.solutions)):
-            sol = self.solutions[i]["solution"]
-            for step in range(1, len(sol)-1):
-                action_cur = self.axiom_index[self.get_ax_name(sol[step]["action"])]
-                action_next = self.axiom_index[self.get_ax_name(sol[step+1]["action"])]
-                frequencies[action_cur, action_next] += 1
-        self.frequencies = frequencies
-        return frequencies
-
-    @staticmethod
-    def dfs(N, graph, cur, paths, visited, cur_paths):
-        """
-        Finds all paths in graph starting at 'cur' node
-        Adds them to 'paths' (or augments existing paths)
-        Indices of paths in 'paths' that 'cur' node belongs to are in 'cur_paths'
-        Nodes in paths that led to 'cur' node are in 'visited'
-        ATTENTION: NOT YET OPTIMIZED FOR WHEN MANY PATHS GO TO SAME NODE (i.e. dfs would be repeatedly called on that node)
-        """
-        copied_cur_paths = [paths[path_idx] for path_idx in cur_paths]
-        # first_next = True
-        for next in range(N):
-            if graph[cur, next]:
-                # COMMENT OUT THIS IF STATEMENT IF YOU WANT PATHS LIKE [5, 8, 5] INSEAD OF [5, 8] FOR CYCLES
-                if next in visited:
-                    warnings.warn("Note: the graph has cycles")
-                    continue
-
-                # if first_next:
-                #     for path_idx in cur_paths:
-                #         paths[path_idx] = paths[path_idx] + (next,)
-                #     next_paths = cur_paths
-                #     first_next = False
-                # else:
-                next_paths = []
-                for cur_path in copied_cur_paths:
-                    paths.append(cur_path + (next,))
-                    next_paths.append(len(paths)-1)
-                
-                # UNCOMMENT THIS PART IF YOU WANT PATHS LIKE [5, 8, 5] INSEAD OF [5, 8] FOR CYCLES
-                # if next in visited:
-                #     warnings.warn("Note: the graph has cycles")
-                #     continue
-                
-                new_visited = visited.copy()
-                new_visited.add(next)
-                CommonPairs.dfs(N, graph, next, paths, new_visited, next_paths)
-
-    @staticmethod
-    def maximal_paths(N, graph):
-        """
-        Helper for common_subseq(..)
-        Finds maximal paths in directed graph given by adjacency matrix 'graph'; N = # nodes
-        ATTENTION: NOT 'MAXIMAL' IN THE REVERSE DIRECTION (SO IF [2, 5, 3, 5] IS DETECTED, [5, 3, 5] ALSO WOULD BE),
-        HENCE THERE ARE MANY REDUNDANCIES
-        """
-        paths = []
-        for node in range(N):
-            paths.append((node,))
-            CommonPairs.dfs(N, graph, node, paths, {node}, [len(paths)-1])
-        
-        return set(paths)
-
-    def abstract(self, draw=False):
-        """
-        Finds common subsequences among solutions where any (current action, next action)
-        pair within subsequence appears with frequency >= thres in dataset of solutions
-        """
-        thres = self.num_ax**(-0.75) if self.thres is None else self.thres # -0.75 is just an arbitrary number between -1 and 0 that I chose
-        thres = int(math.ceil(len(solutions) * thres))
-        graph = self.get_frequencies() >= thres
-
-        if draw:
-            print(graph.astype(int))
-            abs_util.draw_graph(self.num_ax, graph)
-
-        return CommonPairs.maximal_paths(self.num_ax, graph)
 
 
 class IterAbsPairs(Compress):
@@ -476,11 +363,6 @@ class IAPTriePrune(IterAbsPairs):
         Remove abstractions with significantly lower frequency than subabstractions
         """
         top_pairs = set(super().abstract())  # set of Abstraction objects
-        # abstract_trie = abs_util.Trie()
-        # for pair in top_pairs:
-        #     abstract_trie.add([(None, pair.rules[0]), (pair.rel_pos[0], pair.rules[1])], int(pair.freq*len(self.solutions)))
-        # print(abstract_trie)
-        # print('\n')
         abstract_trie = abs_util.Trie()
         for pair in top_pairs:
             abstract_trie.add([(None, pair.rules[0]), (pair.rel_pos[0], pair.rules[1])], 0, (pair.ex_steps, pair.ex_states))
@@ -505,7 +387,6 @@ class IAPTriePrune(IterAbsPairs):
                     else:
                         break
                 i = j + 1
-        # print(abstract_trie)
         def dfs_pruner(trie, depth=0):
             if not trie.is_term:
                 for sub_trie in trie.children.values():
@@ -519,7 +400,6 @@ class IAPTriePrune(IterAbsPairs):
                     else:
                         dfs_pruner(sub_trie, depth+1)
         dfs_pruner(abstract_trie)
-        # print(abstract_trie)
         def dfs_make_abs(trie, store_abs, keys_so_far=[]):
             if not trie.children:
                 abstraction = self.AbsType.from_abs_elt(keys_so_far, ex_states=trie.comment[1])
@@ -534,7 +414,6 @@ class IAPTriePrune(IterAbsPairs):
         abstractions = []
         dfs_make_abs(abstract_trie, abstractions)
         abstractions.sort(key=lambda x: x.freq, reverse=True)
-        # print(abstractions)
         self.abstractions = abstractions
         return abstractions
 
@@ -593,15 +472,6 @@ class IAPDTrieLogN(IAPLogN):
                 heapq.heappush(abs_heap, new_heap_elt)
                 abs_heap_dict[node] = new_heap_elt
 
-        # def dfs_overlap(node, abs_len, prepend: bool):  # l > L, r >= R; l <= L, r < R
-        #     cur_node = node
-        #     for _ in range(abs_len-1):
-        #         cur_node = cur_node.append_parent if prepend else cur_node.prepend_parent
-        #         cur_node.value -= node.value
-        #         update(cur_node)
-        #     for next_node in (node.prepend_children if prepend else node.append_children).values():
-        #         dfs_overlap(next_node, abs_len, prepend)
-
         def dfs_overlap(node, super_node, prepend: bool):  # l > L, r >= R; l <= L, r < R
             node.value -= super_node.value
             update(node)
@@ -629,24 +499,16 @@ class IAPDTrieLogN(IAPLogN):
         top_abs = []
         print("ABS SCORE INCREMENTS:")
         for count in itertools.count() if self.top is None else range(self.top):
-            # with open(f"debug/debug_{count}.txt", "w") as f:
-            #     f.write(str(frequencies))
-            # print(max(x.score for x in abs_heap if not x.removed))
-            # print(max(x.value * (x.depth-1) for x in abs_heap_dict))
             top, score = pop_heap()
             occurs = top.value
-            # print(score)
             increment = score * log(num_abs_ax + 1) - log(1 + 1/num_abs_ax) * avg_length
             print(increment)
             if self.top is None and increment < 0:
                 break
             top_abs.append((top, occurs / len(self.solutions), score))
             num_abs_ax += 1
-            # print(avg_length)
             avg_length -= score
-            # print(avg_length)
             # l > L, r >= R; l <= L, r < R
-            # breakpoint()
             for prepend in [False, True]:
                 cur_node = top
                 for _ in range(top.depth-1):
@@ -676,16 +538,12 @@ class IAPDTrieLogN(IAPLogN):
         return self.abstractions
 
 
-COMPRESSORS = {"pair_graph": CommonPairs, "iap": IterAbsPairs, "iap_rand": IAPRandom, "iap_heur": IAPHeuristic,
+COMPRESSORS = {"iap": IterAbsPairs, "iap_rand": IAPRandom, "iap_heur": IAPHeuristic,
                "iap_ent": IAPEntropy, "iap_logn": IAPLogN, "iap_trie": IAPTriePrune, "iap_dtrie": IAPDTrieLogN}
 
-
 def debug():
-    solutions = abs_util.load_solutions("equations-80k-relative.json")
-    solutions = [Solution.from_dict(sol) for sol in solutions[:1000]]
-    _, axioms = abs_util.load_axioms("equation_axioms.json")
-    compressor = IAPTriePrune(solutions, axioms, {"top": 8, "abs_type": "tree_rel_pos"})
-    compressor.abstract()
+    """ Add code here for debugging """
+    pass
 
 
 if __name__ == "__main__":
@@ -726,12 +584,12 @@ if __name__ == "__main__":
 
     if args.sol_data is None:
         if args.abs_type == "tree_rel_pos":
-            solutions = abs_util.load_solutions("equations-80k-relative.json")
+            solutions = abs_util.load_solutions("data/equations-80k-relative.json")
         else:
             if args.small:
-                solutions = abs_util.load_solutions("equations-8k.json")
+                solutions = abs_util.load_solutions("data/equations-8k.json")
             else:
-                solutions = abs_util.load_solutions("equations-80k.json")
+                solutions = abs_util.load_solutions("data/equations-80k.json")
     elif isinstance(args.sol_data, str):
         with open(args.sol_data, 'r') as f:
             solutions = abs_util.load_solutions(args.sol_data)
@@ -791,7 +649,3 @@ if __name__ == "__main__":
                             print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][j]}")
                             print(f"\t\t\t\t{abs_ax[i].rel_pos_ex_steps[rp][j]}")
                         print(f"\t\t\t{abs_ax[i].rel_pos_ex_states[rp][-1]}")
-
-    # ex_sol = abs_sol[59]
-    # abs_util.print_solution(ex_sol)
-
