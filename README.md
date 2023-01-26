@@ -8,7 +8,7 @@ In this project, we want to learn mathematical abstractions from formal solution
 4. Can these abstractions help us solve increasingly complex mathematical problems?
 
 We explore questions 1-3 with a [dataset of ConPoLe solutions to equations](https://drive.google.com/drive/folders/1smRbVlZRNQi1OpiOhvWQ7fGA1dsgu0DI?usp=share_link).
-Question 4 requires integrating the patterns in the learning algorithm, which was accomplished in [this fork](https://github.com/uranium11010/socratic-tutor/tree/abstract)
+Question 4 requires integrating the patterns in the learning algorithm, which was accomplished in [this fork](https://github.com/uranium11010/socratic-tutor/tree/2374d4a795cba3f9151ad95b68a81dac455c51d6)
 of the original ConPoLe repository.
 
 The paper can be found [here](https://arxiv.org/abs/2211.08671).
