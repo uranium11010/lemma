@@ -25,7 +25,7 @@ class Axiom(Rule):
         yield self.AbsType.get_abs_elt_from_ax(self)
 
     def __str__(self):
-        return self.name
+        return str(self.name)
     
     def __repr__(self):
         return f"Axiom(\"{self.name}\")"
@@ -179,7 +179,7 @@ class AxiomSeq(Abstraction):
         if self.name_str is None:
             def get_name_str(rule):
                 if isinstance(rule, Axiom):
-                    return rule.name
+                    return str(rule)
                 return '{' + str(rule) + '}'
             self.name_str = '~'.join(map(get_name_str, self.rules))
         return self.name_str
