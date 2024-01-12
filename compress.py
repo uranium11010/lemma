@@ -17,9 +17,9 @@ import itertools
 from datetime import datetime
 import doctest
 
-from steps import Step, AbsStep, Solution
-from abstractions import Axiom, Abstraction, ABS_TYPES, AxSeqTreeRelPos
-import abs_util
+from .steps import Step, AbsStep, Solution
+from .abstractions import Axiom, Abstraction, ABS_TYPES, AxSeqTreeRelPos
+from . import abs_util
 
 
 def log(x):

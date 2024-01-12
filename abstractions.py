@@ -3,7 +3,7 @@ Classes for types of abstractions
 """
 
 import doctest
-import abs_util
+from . import abs_util
 
 
 class Rule:
@@ -120,7 +120,7 @@ class AxiomSeq(Abstraction):
     """
     Abstraction: sequence of rules
 
-    >>> from steps import *; from abstractions import *
+    >>> from .steps import *; from .abstractions import *
     >>> AxiomSeq.from_steps([Step.from_string("refl"), AbsStep((Step.from_string("sub 1"), Step.from_string("comm 0.0.1, 3x")), AxiomSeq), Step.from_string("comm 0.1, 2x")]).rules
     (Axiom("refl"), AxiomSeq("sub~comm"), Axiom("comm"))
     >>> AxiomSeq.from_string("assoc~eval").rules
@@ -196,7 +196,7 @@ class AxSeqTreeRelPos(Abstraction):
     Abstraction: sequence of rules + relative positions of application within tree
     Corresponding Step objects have bit strings as their indices
 
-    >>> from steps import *; from abstractions import *
+    >>> from .steps import *; from .abstractions import *
     >>> AxSeqTreeRelPos.from_steps([Step.from_string("refl"), AbsStep((Step.from_string("sub 1"), Step.from_string("comm 0.0.1, 3x"))), Step.from_string("comm 0.1, 2x")]).rel_pos
     ((None, None), ('0.1', '1'))
     >>> AxSeqTreeRelPos.from_string("assoc~eval:_1").rel_pos
@@ -277,7 +277,7 @@ class AxSeqTreeRelPos(Abstraction):
         """
         `cur_steps` is Solution object
 
-        >>> from steps import Step, Solution
+        >>> from .steps import Step, Solution
         >>> AxSeqTreeRelPos.get_abs_elt(Step.from_string("eval 0.0.0.1, 3 - 3"), Solution(["", ""], [Step.from_string("assoc 0.0.0, (x + 3) - 3")]))
         (('', '1'), Axiom("eval"))
         """

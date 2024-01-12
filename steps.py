@@ -3,8 +3,8 @@ Classes related to steps, axioms, and solutions
 """
 
 import doctest
-import abs_util
-from abstractions import Axiom, Abstraction, AxSeqTreeRelPos
+from . import abs_util
+from .abstractions import Axiom, Abstraction, AxSeqTreeRelPos
 
 
 class Step:
