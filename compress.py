@@ -128,18 +128,22 @@ class IterAbsPairs(Compress):
 
         frequencies = defaultdict(int) if not self.peek_pos else defaultdict(lambda: [0, defaultdict(int), {}, {}])
         for i, (sol, legal_zones) in enumerate(zip(self.solutions, mask_list)):
-            for length in range(min_len, 1 + (max_len or len(sol.actions))):
-                for start_idx, end_idx in legal_zones:
-                    for j in range(start_idx, end_idx - length + 1):
+            cur_max_abs_len = max_len if max_len is not None else len(sol.actions)
+            for start_idx, end_idx in legal_zones:
+                last_inds = defaultdict(int)
+                for j in range(start_idx, end_idx - min_len + 1):
+                    for length in range(min_len, 1 + min(cur_max_abs_len, end_idx - j)):
                         abstract = self.AbsType.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
-                        if not self.peek_pos:
-                            frequencies[abstract] += 1
-                        else:
-                            frequencies[abstract][0] += 1
-                            wp_abs = AxSeqTreeRelPos.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
-                            frequencies[abstract][1][wp_abs.rel_pos] += 1
-                            frequencies[abstract][2][wp_abs.rel_pos] = wp_abs.ex_steps
-                            frequencies[abstract][3][wp_abs.rel_pos] = wp_abs.ex_states
+                        if j >= last_inds[abstract]:
+                            if not self.peek_pos:
+                                frequencies[abstract] += 1
+                            else:
+                                frequencies[abstract][0] += 1
+                                wp_abs = AxSeqTreeRelPos.from_steps(sol.actions[j:j+length], ex_states=sol.states[j:j+length+1])
+                                frequencies[abstract][1][wp_abs.rel_pos] += 1
+                                frequencies[abstract][2][wp_abs.rel_pos] = wp_abs.ex_steps
+                                frequencies[abstract][3][wp_abs.rel_pos] = wp_abs.ex_states
+                            last_inds[abstract] = j + length
         if not self.peek_pos:
             for abstract in frequencies:
                 frequencies[abstract] /= factor
@@ -272,6 +276,8 @@ class IAPLogN(IterAbsPairs):
         Only chooses one abstraction; use `iter_abstract` to get multiple
         """
         frequencies = self.frequencies or self.get_frequencies(len(self.solutions), self.max_abs_len, mask=mask)
+        if not frequencies:
+            return None, None
         for abstract in frequencies:
             abstract.score = abstract.freq * (len(abstract) - 1)
         top_abs = max(frequencies, key=lambda ab: ab.score)
@@ -293,8 +299,9 @@ class IAPLogN(IterAbsPairs):
         for i in itertools.count() if self.top is None else range(self.top):
             abstractor = IAPLogN(sols, axioms, self.config)
             top_abs, increment = abstractor.get_top_abs(mask=abs_set)
+            print(top_abs)
             print(increment)
-            if self.top is None and increment < 0:
+            if increment is None or (self.top is None and increment < 0):
                 break
             abstractions.append(top_abs)
             abs_set.add(top_abs)
